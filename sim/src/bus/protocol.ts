@@ -14,6 +14,7 @@ export const FrameKind = {
   Announce: 4,
   Assign: 5,
   Settings: 6,
+  Chain: 7,
 } as const;
 export type FrameKind = (typeof FrameKind)[keyof typeof FrameKind];
 
@@ -112,6 +113,19 @@ export interface Settings {
   impactPolicy: number;
   /** 0 = nominal, 1 = fitted, 2 = learned. */
   model: number;
+  /** Gravity feed-forward source: 0 = off, 1 = own IMU, 2 = encoders from a level base. */
+  gravity: number;
+}
+
+/** Gravity chain data (B10); vectors in the sender's housing frame. */
+export interface Chain {
+  upLink: Vec3f;
+  mass: number;
+  com: Vec3f;
+  flange: Vec3f;
+  payloadMass: number;
+  payloadLever: number;
+  holdingTorque: number;
 }
 
 export type Frame =
@@ -120,7 +134,8 @@ export type Frame =
   | { header: Header & { kind: typeof FrameKind.Limits }; limits: Limits }
   | { header: Header & { kind: typeof FrameKind.Announce }; announce: Announce }
   | { header: Header & { kind: typeof FrameKind.Assign }; assign: Assign }
-  | { header: Header & { kind: typeof FrameKind.Settings }; settings: Settings };
+  | { header: Header & { kind: typeof FrameKind.Settings }; settings: Settings }
+  | { header: Header & { kind: typeof FrameKind.Chain }; chain: Chain };
 
 const PAYLOAD_LEN: Record<FrameKind, number> = {
   [FrameKind.State]: 4 + 17 * 4,
@@ -128,7 +143,8 @@ const PAYLOAD_LEN: Record<FrameKind, number> = {
   [FrameKind.Limits]: 24,
   [FrameKind.Announce]: 4 + 10 * 4,
   [FrameKind.Assign]: 4,
-  [FrameKind.Settings]: 4,
+  [FrameKind.Settings]: 8,
+  [FrameKind.Chain]: 13 * 4,
 };
 
 /** Encoded length of a frame of `kind`, header included. */
@@ -243,6 +259,20 @@ export function encodeFrame(frame: Frame): Uint8Array {
     w.u8(st.interpolation);
     w.u8(st.impactPolicy);
     w.u8(st.model);
+    w.u8(st.gravity);
+    w.u8(0);
+    w.u16(0);
+  } else if ("chain" in frame) {
+    const c = frame.chain;
+    w.f32(
+      ...c.upLink,
+      c.mass,
+      ...c.com,
+      ...c.flange,
+      c.payloadMass,
+      c.payloadLever,
+      c.holdingTorque,
+    );
   } else {
     w.u8(frame.assign.position);
     w.u8(frame.assign.id);
@@ -320,8 +350,21 @@ export function decodeFrame(bytes: Uint8Array): Frame {
         interpolation: r.u8(),
         impactPolicy: r.u8(),
         model: r.u8(),
+        gravity: r.u8(),
       };
       return { header: { kind, source, destination, cycle }, settings };
+    }
+    case FrameKind.Chain: {
+      const chain: Chain = {
+        upLink: r.vec3(),
+        mass: r.f32(),
+        com: r.vec3(),
+        flange: r.vec3(),
+        payloadMass: r.f32(),
+        payloadLever: r.f32(),
+        holdingTorque: r.f32(),
+      };
+      return { header: { kind, source, destination, cycle }, chain };
     }
     default: {
       const assign = { position: r.u8(), id: r.u8() };

@@ -14,7 +14,7 @@ export interface TapOptions {
   readonly force?: number;
   /** Tap duration, s. */
   readonly pulseSeconds?: number;
-  /** Time to settle before the tap, s (discovery, integrators). */
+  /** Time to settle before the tap, s (discovery, payload estimate). */
   readonly settleSeconds?: number;
   /** Length of the record after the tap, s. */
   readonly recordSeconds?: number;
@@ -43,7 +43,7 @@ export function tapTest(system: ArmSystem, options: TapOptions = {}): TapResult 
     direction = [0, 0, 1],
     force = 200,
     pulseSeconds = 0.01,
-    settleSeconds = 2,
+    settleSeconds = 5,
     recordSeconds = 4,
   } = options;
   system.run(settleSeconds);

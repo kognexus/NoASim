@@ -83,7 +83,9 @@ fn becomes_ready_with_limits_and_enforces_them() {
     tick(&mut node, 0, &at(0.0), &[assign, limits]);
     let (torque, frames) = tick(&mut node, 1, &at(1.0), &[]);
     assert!((torque + 5.0).abs() < 1e-6, "torque {torque}");
-    let Some(Frame::State(_, state)) = frames.last() else { panic!("expected state") };
+    let Some(Frame::State(_, state)) = frames.iter().find(|f| matches!(f, Frame::State(..))) else {
+        panic!("expected state")
+    };
     assert!(state.status.has(StatusFlags::READY));
     assert!((state.torque_command + 5.0).abs() < 1e-6);
 }

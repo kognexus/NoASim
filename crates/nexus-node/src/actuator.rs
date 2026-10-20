@@ -5,6 +5,7 @@ use crate::control::Controller;
 use crate::damping::{Damper, DampingContext};
 use crate::dynamics::DynamicsModel;
 use crate::estimate::{Estimate, Estimator};
+use crate::gravity::{GravityCompensator, GravitySource};
 use crate::io::{Inbox, Outbox};
 use crate::models::{ModelChoice, ModelSet};
 use crate::neighbours::Neighbourhood;
@@ -14,6 +15,9 @@ use crate::sensors::SensorFrame;
 use nexus_proto::{
     DampingMode, Destination, Frame, FrameKind, Header, Limits, NodeId, NodeState, Settings, StatusFlags,
 };
+
+/// The gravity chain is shared every this many cycles (1 kHz at a 4 kHz bus).
+const CHAIN_PERIOD: u32 = 4;
 
 /// The swappable stages a node is built from.
 pub struct Stages<E, I, C, D, S> {
@@ -42,6 +46,8 @@ pub struct Actuator<E, I, C, D, S> {
     started: bool,
     stages: Stages<E, I, C, D, S>,
     models: ModelSet,
+    gravity: GravityCompensator,
+    gravity_source: GravitySource,
     settings: Settings,
     last: Estimate,
     last_damping: f32,
@@ -67,8 +73,10 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             has_limits: false,
             started: false,
             models: ModelSet::new(&config),
+            gravity: GravityCompensator::new(&config),
+            gravity_source: GravitySource::Imu,
             stages,
-            settings: Settings::default(),
+            settings: Settings { gravity: 1, ..Settings::default() },
             last: Estimate::default(),
             last_damping: 0.0,
             neighbours: Neighbourhood::default(),
@@ -123,8 +131,10 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             self.handle(&frame, cycle, outbox);
         }
         self.models.observe(&estimate);
+        let gravity = self.gravity.update(self.gravity_source, &estimate, &self.neighbours, cycle);
         let reference = self.stages.interpolator.reference(cycle);
-        let feedforward = self.models.friction(reference.position, reference.velocity);
+        let feedforward =
+            self.models.friction(reference.position, reference.velocity) + gravity.holding_torque;
         let control = self.stages.controller.torque(&estimate, &reference, feedforward);
         let context = DampingContext { neighbours: &self.neighbours, now: cycle };
         let cap = self.limits.network_torque_share * self.limits.max_torque;
@@ -134,6 +144,10 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
         self.last_damping = damping;
         if self.id != NodeId::UNASSIGNED {
             outbox.push(&self.state_frame(cycle, &estimate, torque));
+            if cycle % CHAIN_PERIOD == u32::from(self.line_position) % CHAIN_PERIOD {
+                let header = self.header(FrameKind::Chain, Destination::Neighbours, cycle);
+                outbox.push(&Frame::Chain(header, gravity.chain));
+            }
         }
         torque
     }
@@ -153,6 +167,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             Frame::Settings(_, settings) => {
                 self.settings = *settings;
                 self.models.choice = ModelChoice::from_byte(settings.model);
+                self.gravity_source = GravitySource::from_byte(settings.gravity);
             }
             Frame::Announce(header, announce) => {
                 self.neighbours.on_announce(self.line_position, header.source, announce);
@@ -160,6 +175,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             Frame::State(header, state) => {
                 self.neighbours.on_state(header.source, state, header.cycle, cycle);
             }
+            Frame::Chain(header, chain) => self.neighbours.on_chain(header.source, chain, header.cycle),
             Frame::Assign(..) => {}
         }
     }

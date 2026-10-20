@@ -40,14 +40,14 @@ export interface ControlGains {
   readonly imuLowpassHz: number;
 }
 
-/** Defaults, tuned in NX-07 (see docs/tickets/NX-07.md). */
+/** Defaults, tuned in NX-07 and NX-08 (see ADR-0003). */
 export const DEFAULT_GAINS: ControlGains = {
   naturalHz: 4,
   minStiffnessPerNm: 50,
-  dampingRatio: 0.7,
+  dampingRatio: 0.3,
   integralGain: 0,
   rotorDampingPerNm: 0.1,
-  observerHz: 400,
+  observerHz: 150,
   localDampingRatio: 0.3,
   networkDampingRatio: 1,
   dampingHighpassHz: 1,

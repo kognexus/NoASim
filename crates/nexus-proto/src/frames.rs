@@ -25,6 +25,8 @@ pub enum FrameKind {
     Assign = 5,
     /// The host switching node behaviour (damping mode and friends) at run time.
     Settings = 6,
+    /// Gravity chain data a node shares with its neighbours (B10).
+    Chain = 7,
 }
 
 impl FrameKind {
@@ -36,6 +38,7 @@ impl FrameKind {
             4 => Self::Announce,
             5 => Self::Assign,
             6 => Self::Settings,
+            7 => Self::Chain,
             other => return Err(DecodeError::UnknownKind(other)),
         })
     }
@@ -50,6 +53,7 @@ impl FrameKind {
             Self::Announce => Announce::LEN,
             Self::Assign => Assign::LEN,
             Self::Settings => Settings::LEN,
+            Self::Chain => Chain::LEN,
         }
     }
 }
@@ -408,25 +412,83 @@ pub struct Settings {
     pub impact_policy: u8,
     /// Dynamics model (0 = nominal, 1 = fitted, 2 = learned).
     pub model: u8,
+    /// Gravity feed-forward source (0 = off, 1 = own IMU, 2 = encoders from a level base).
+    pub gravity: u8,
 }
 
 impl Settings {
     /// Payload length in bytes.
-    pub const LEN: usize = 4;
+    pub const LEN: usize = 8;
 
     fn write(self, w: &mut Writer) {
         w.u8(self.damping as u8);
         w.u8(self.interpolation);
         w.u8(self.impact_policy);
         w.u8(self.model);
+        w.u8(self.gravity);
+        w.u8(0);
+        w.u16(0);
     }
 
     fn read(r: &mut Reader) -> Result<Self, DecodeError> {
-        Ok(Self {
+        let settings = Self {
             damping: DampingMode::from_byte(r.u8()?),
             interpolation: r.u8()?,
             impact_policy: r.u8()?,
             model: r.u8()?,
+            gravity: r.u8()?,
+        };
+        r.u8()?;
+        r.u16()?;
+        Ok(settings)
+    }
+}
+
+/// Gravity chain data (B10), sent to the neighbours about once per millisecond.
+///
+/// Vectors are in the sender's housing frame, which is its inner neighbour's link frame.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Chain {
+    /// "Up" (specific force at rest, m/s²) in the sender's *link* frame, propagated from a
+    /// base assumed level through the encoder angles. Only the comparison model uses it.
+    pub up_link: [f32; 3],
+    /// Mass of the sender's link and everything beyond it, kg.
+    pub mass: f32,
+    /// Centre of that mass, m.
+    pub com: [f32; 3],
+    /// Tool flange position, m.
+    pub flange: [f32; 3],
+    /// Best payload estimate so far along the chain, kg.
+    pub payload_mass: f32,
+    /// Lever of that estimate (larger is better), N·m/kg; 0 if none.
+    pub payload_lever: f32,
+    /// Gravity torque the sender is holding, N·m.
+    pub holding_torque: f32,
+}
+
+impl Chain {
+    /// Payload length in bytes.
+    pub const LEN: usize = 13 * 4;
+
+    fn write(&self, w: &mut Writer) {
+        w.vec3(self.up_link);
+        w.f32(self.mass);
+        w.vec3(self.com);
+        w.vec3(self.flange);
+        w.f32(self.payload_mass);
+        w.f32(self.payload_lever);
+        w.f32(self.holding_torque);
+    }
+
+    fn read(r: &mut Reader) -> Result<Self, DecodeError> {
+        Ok(Self {
+            up_link: r.vec3()?,
+            mass: r.f32()?,
+            com: r.vec3()?,
+            flange: r.vec3()?,
+            payload_mass: r.f32()?,
+            payload_lever: r.f32()?,
+            holding_torque: r.f32()?,
         })
     }
 }
@@ -446,6 +508,8 @@ pub enum Frame {
     Assign(Header, Assign),
     /// See [`Settings`].
     Settings(Header, Settings),
+    /// See [`Chain`].
+    Chain(Header, Chain),
 }
 
 impl Frame {
@@ -458,7 +522,8 @@ impl Frame {
             | Self::Limits(h, _)
             | Self::Announce(h, _)
             | Self::Assign(h, _)
-            | Self::Settings(h, _) => h,
+            | Self::Settings(h, _)
+            | Self::Chain(h, _) => h,
         }
     }
 
@@ -493,6 +558,7 @@ impl Frame {
             Self::Announce(_, p) => p.write(&mut w),
             Self::Assign(_, p) => p.write(&mut w),
             Self::Settings(_, p) => p.write(&mut w),
+            Self::Chain(_, p) => p.write(&mut w),
         }
         w.len()
     }
@@ -518,6 +584,7 @@ impl Frame {
             FrameKind::Announce => Self::Announce(header, Announce::read(&mut r)?),
             FrameKind::Assign => Self::Assign(header, Assign::read(&mut r)?),
             FrameKind::Settings => Self::Settings(header, Settings::read(&mut r)?),
+            FrameKind::Chain => Self::Chain(header, Chain::read(&mut r)?),
         })
     }
 }

@@ -43,7 +43,7 @@ export class Host {
   lastReceived: Frame[] = [];
   /** Frames queued by the application (settings, goals), sent on the next tick. */
   readonly #queue: Frame[] = [];
-  #settings: Settings = { damping: 0, interpolation: 0, impactPolicy: 0, model: 0 };
+  #settings: Settings = { damping: 0, interpolation: 0, impactPolicy: 0, model: 0, gravity: 1 };
 
   constructor(options: HostOptions = {}) {
     const share = options.networkTorqueShare ?? 0.25;

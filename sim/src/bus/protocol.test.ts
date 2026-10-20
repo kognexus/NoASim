@@ -71,7 +71,19 @@ const SAMPLES: Record<string, Frame> = {
   assign: { header: header(FrameKind.Assign, 0, 0xff), assign: { position: 4, id: 4 } },
   settings: {
     header: header(FrameKind.Settings, 0, 0xff),
-    settings: { damping: 2, interpolation: 1, impactPolicy: 2, model: 1 },
+    settings: { damping: 2, interpolation: 1, impactPolicy: 2, model: 1, gravity: 1 },
+  },
+  chain: {
+    header: header(FrameKind.Chain, 2, 0xfe),
+    chain: {
+      upLink: [0.5, -0.25, 9.75],
+      mass: 7.5,
+      com: [0.125, 0, 0.375],
+      flange: [0, 0.25, 0.875],
+      payloadMass: 2.875,
+      payloadLever: -4.5,
+      holdingTorque: -31.25,
+    },
   },
 };
 

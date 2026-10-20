@@ -7,6 +7,11 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-08** Gravity compensation computed joint by joint: IMU "up" estimate, tip-inward
+  load chain over a new `Chain` frame, payload estimate from gear-twist torque, a
+  level-base comparison model, and base tilt and motion injectors. Sideways tilt of 15°:
+  tool held within 0.4 mm against 4.9 mm for the level-base model. Baseline joint damping
+  moved to ζ 0.3 after the IMUs revealed rotor–gear ringing (ADR-0003 update).
 - **NX-07** Node control stack: output-encoder joint controller with rotor damping,
   richer estimator (twist torque, current torque, acceleration), nominal and RLS friction
   models, local and network dampers behind energy tanks, run-time `Settings` frame. Harness

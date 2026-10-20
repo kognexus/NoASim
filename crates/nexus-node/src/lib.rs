@@ -18,12 +18,14 @@ mod damping;
 mod dynamics;
 mod estimate;
 mod filters;
+mod gravity;
 mod io;
 mod models;
 mod neighbours;
 mod reference;
 mod safety;
 mod sensors;
+mod vector;
 
 pub use actuator::{Actuator, Stages};
 pub use config::NodeConfig;
@@ -31,7 +33,11 @@ pub use control::{Controller, JointController};
 pub use damping::{Damper, DampingContext, EnergyTank, LocalDamper, NetworkDamper, MAX_NEIGHBOUR_AGE};
 pub use dynamics::{DynamicsModel, NominalModel, RlsModel};
 pub use estimate::{EncoderEstimator, Estimate, Estimator, TrackingObserver};
-pub use filters::{HighPass, LowPass};
+pub use filters::{HighPass, LowPass, LowPass2};
+pub use gravity::{
+    ChainLoad, GravityCompensator, GravityOutput, GravitySource, LinkModel, PayloadEstimator, UpEstimator,
+    MAX_CHAIN_AGE, STANDARD_GRAVITY,
+};
 pub use io::{Frames, Inbox, Outbox};
 pub use models::{ModelChoice, ModelSet};
 pub use neighbours::{Neighbour, Neighbourhood, Side};

@@ -59,3 +59,15 @@ actuation delay, real sensor noise) showed four limits that shape the whole desi
 - The light wrist gear (6 000 N·m/rad, very little damping) rings at the rotor–gear
   resonance at rest (gear twist swinging by a few mrad). It is invisible at the tool, but
   NX-11 should damp it.
+
+## Update (NX-08): a quiet baseline
+
+Once the nodes started using their accelerometers for gravity, they revealed what the tool
+position had hidden. At damping ratio 0.7 the rotor–gear modes rang at rest, with housing
+accelerations of about 400 m/s² RMS (the wrist IMUs saturating at 16 g) and gear twist
+swinging by several mrad. "Quiet at rest" is now part of the baseline: housing
+acceleration within a few percent of 1 g. The baseline moves to **damping ratio 0.3 with
+a 150 Hz observer**. With gravity feed-forward and 5 s of settling (payload estimate) it
+settles the 200 N × 10 ms tap in about 1.1 s, with 0.017 mm rest jitter, and its housings
+read 9.8–10.1 m/s². Stronger rotor damping (1 N·m·s/rad per rated N·m) also silenced the
+ringing at ζ 0.5. It stays a candidate for the NX-11 tuner.

@@ -23,6 +23,8 @@ interface JointAddresses {
   readonly gyro: number;
   readonly accel: number;
   readonly linkBody: number;
+  /** The IMU's body has no degrees of freedom (the fixed base). */
+  readonly imuOnStaticBody: boolean;
 }
 
 /** Named-access fields are numbers for scalars in some binding versions and arrays in others. */
@@ -163,7 +165,14 @@ export class Plant {
 
   /** Specific force at joint `i`'s housing in the IMU frame, m/s² (ideal accelerometer). */
   accelerometer(i: number): Vec3 {
-    return this.#sensor3(this.#joint(i).accel);
+    const adr = this.#joint(i);
+    if (adr.imuOnStaticBody) {
+      // MuJoCo reports zero acceleration for bodies welded to the world; a real IMU on a
+      // fixed base reads the specific force of gravity. The base frame is the world frame.
+      const g = this.gravity();
+      return [-g[0], -g[1], -g[2]];
+    }
+    return this.#sensor3(adr.accel);
   }
 
   /** Position of the tool centre point in the world frame, m. */
@@ -174,6 +183,30 @@ export class Plant {
   /** Velocity of the tool centre point in the world frame, m/s. */
   tcpVelocity(): Vec3 {
     return this.#sensor3(this.#tcpVel);
+  }
+
+  /**
+   * Sets the gravity vector, world frame, m/s². Tilting gravity is the same as tilting the
+   * base; subtracting a base acceleration from it is the same as accelerating the base.
+   */
+  setGravity(gravity: Vec3): void {
+    (this.#model.opt.gravity as Float64Array).set(gravity);
+  }
+
+  /** The gravity vector, world frame, m/s². */
+  gravity(): Vec3 {
+    const g = this.#model.opt.gravity as Float64Array;
+    return [g[0] ?? 0, g[1] ?? 0, g[2] ?? 0];
+  }
+
+  /**
+   * Torque joint `i`'s motor must apply to hold the arm against gravity in the current
+   * pose (ground truth, valid when the arm is at rest).
+   */
+  holdingTorque(i: number): number {
+    const adr = this.#joint(i);
+    const dof = adr.motorDof >= 0 ? adr.motorDof : adr.gearDof;
+    return (this.#data.qfrc_bias as Float64Array)[dof] ?? 0;
   }
 
   /** Applies an external force (world frame, N) at the tool body's centre of mass until changed. */
@@ -222,6 +255,17 @@ export class Plant {
     return adr;
   }
 
+  #siteOnStaticBody(name: string): boolean {
+    const site = this.#model.site(name);
+    const bodyId = scalar(site.bodyid);
+    site.delete();
+    const body = this.#model.body(bodyId);
+    const dofs = scalar(body.dofnum);
+    const parent = scalar(body.parentid);
+    body.delete();
+    return dofs === 0 && parent === 0;
+  }
+
   #jointAdr(name: string): { qpos: number; dof: number } {
     const joint = this.#model.jnt(name);
     const result = { qpos: scalar(joint.qposadr), dof: scalar(joint.dofadr) };
@@ -247,6 +291,7 @@ export class Plant {
       gyro: this.#sensorAdr(names.gyroSensor),
       accel: this.#sensorAdr(names.accelSensor),
       linkBody: this.#id(mjOBJ_BODY.value, names.linkBody),
+      imuOnStaticBody: this.#siteOnStaticBody(names.imuSite),
     };
   }
 }

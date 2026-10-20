@@ -53,12 +53,12 @@ describe("discovery over the bus (NX-06)", () => {
     expect(system.cycle - cutCycle).toBeLessThanOrEqual(20 + 3);
   });
 
-  // Without gravity feed-forward (NX-08) the joints hold by stiffness alone and sag.
   it("holds the arm while it starts up", async () => {
     system = await ArmSystem.create(mujoco, nodeModule);
     const start = system.plant.tcpPosition();
     system.run(0.5);
     const end = system.plant.tcpPosition();
-    expect(Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2])).toBeLessThan(0.12);
+    // The payload estimate is still converging after half a second (see gravity.test.ts).
+    expect(Math.hypot(end[0] - start[0], end[1] - start[1], end[2] - start[2])).toBeLessThan(0.05);
   });
 });

@@ -1,7 +1,7 @@
 //! What a node knows about the joints next to it: their announced parameters and their
 //! latest published state, with its age.
 
-use nexus_proto::{Announce, NodeId, NodeState};
+use nexus_proto::{Announce, Chain, NodeId, NodeState};
 
 /// Which side of the node a neighbour is on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -25,6 +25,10 @@ pub struct Neighbour {
     pub state_cycle: u32,
     /// Cycle at which that state arrived here.
     pub received_cycle: u32,
+    /// Its latest gravity-chain data, if any.
+    pub chain: Option<Chain>,
+    /// Cycle stamped on that chain data by the neighbour.
+    pub chain_cycle: u32,
 }
 
 impl Neighbour {
@@ -32,6 +36,12 @@ impl Neighbour {
     #[must_use]
     pub const fn age(&self, now: u32) -> u32 {
         now.wrapping_sub(self.state_cycle)
+    }
+
+    /// The latest chain data if it is at most `max_age` cycles old at `now`.
+    #[must_use]
+    pub fn fresh_chain(&self, now: u32, max_age: u32) -> Option<&Chain> {
+        self.chain.as_ref().filter(|_| now.wrapping_sub(self.chain_cycle) <= max_age)
     }
 
     /// The latest state if it is at most `max_age` cycles old at `now`.
@@ -71,7 +81,19 @@ impl Neighbourhood {
             state: None,
             state_cycle: 0,
             received_cycle: 0,
+            chain: None,
+            chain_cycle: 0,
         });
+    }
+
+    /// Records a neighbour's gravity-chain data.
+    pub fn on_chain(&mut self, source: NodeId, chain: &Chain, chain_cycle: u32) {
+        for neighbour in [&mut self.inner, &mut self.outer].into_iter().flatten() {
+            if neighbour.id == source {
+                neighbour.chain = Some(*chain);
+                neighbour.chain_cycle = chain_cycle;
+            }
+        }
     }
 
     /// Records a neighbour's state; states from other nodes or older than the one held
