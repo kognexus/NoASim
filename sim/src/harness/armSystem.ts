@@ -136,7 +136,7 @@ export class ArmSystem {
       }),
     );
     const bus = new EthercatBus(spec.joints.length, rng.derive("bus"), options.bus);
-    const host = new Host(options.host);
+    const host = new Host(spec, rng.derive("host"), options.host);
     bus.send(HOST_PORT, host.start(bus.reachableNodes(), 0), 0);
     return new ArmSystem(plant, bus, host, joints, substeps);
   }

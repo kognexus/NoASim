@@ -23,23 +23,27 @@ pub trait Interpolator {
     fn reference(&mut self, now: u32) -> Reference;
 }
 
-/// Jumps to each goal's position as soon as it arrives. The NX-05 placeholder; NX-10
-/// replaces it with jerk-limited, clock-synchronised interpolation.
+/// Follows each goal as a setpoint the moment it arrives: position and velocity jump,
+/// then hold until the next one. This is how joints follow a host that interpolates
+/// centrally and streams setpoints.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct StepInterpolator {
     target: f32,
+    velocity: f32,
 }
 
 impl Interpolator for StepInterpolator {
     fn hold(&mut self, position: f32) {
         self.target = position;
+        self.velocity = 0.0;
     }
 
     fn add_goal(&mut self, goal: &Goal, _now: u32) {
         self.target = goal.position;
+        self.velocity = goal.velocity;
     }
 
     fn reference(&mut self, _now: u32) -> Reference {
-        Reference { position: self.target, velocity: 0.0, acceleration: 0.0 }
+        Reference { position: self.target, velocity: self.velocity, acceleration: 0.0 }
     }
 }

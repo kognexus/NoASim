@@ -7,6 +7,10 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-09** Host side of motion: VLA policy emulator (rate, latency, jitter, drops),
+  scripted tasks, damped-least-squares IK on the nominal kinematics, the central
+  interpolation baseline and joint-level goals, a host work counter, and a motion
+  scenario measuring tool jerk and path error.
 - **NX-08** Gravity compensation computed joint by joint: IMU "up" estimate, tip-inward
   load chain over a new `Chain` frame, payload estimate from gear-twist torque, a
   level-base comparison model, and base tilt and motion injectors. Sideways tilt of 15°:

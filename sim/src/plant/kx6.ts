@@ -143,3 +143,21 @@ export const KX6: ArmSpec = {
   ],
   payload: { mass: 3.0, offset: [0, 0, 0.05] },
 };
+
+/**
+ * Working pose for motion tasks: tool pointing down at (0.60, 0, 0.25) m. The stretched
+ * start pose of {@link KX6} is the worst case for vibration, but a singularity for
+ * reaching.
+ */
+export const KX6_HOME: readonly number[] = [0, 0.527, 1.102, 1.512, 0, 0];
+
+/** `spec` starting at `angles` instead of its own initial pose. */
+export function withInitialAngles(spec: ArmSpec, angles: readonly number[]): ArmSpec {
+  return {
+    ...spec,
+    joints: spec.joints.map((joint, i) => ({
+      ...joint,
+      initialAngle: angles[i] ?? joint.initialAngle,
+    })),
+  };
+}

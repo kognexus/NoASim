@@ -5,7 +5,8 @@
 import type { ArmSpec, Vec3 } from "./armSpec.ts";
 import { reflectedInertia } from "./armSpec.ts";
 
-type Mat3 = [number, number, number, number, number, number, number, number, number];
+/** Row-major 3×3 rotation matrix. */
+export type Mat3 = [number, number, number, number, number, number, number, number, number];
 
 const IDENTITY: Mat3 = [1, 0, 0, 0, 1, 0, 0, 0, 1];
 
