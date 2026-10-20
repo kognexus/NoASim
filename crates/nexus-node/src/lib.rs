@@ -43,13 +43,16 @@ pub use models::{ModelChoice, ModelSet};
 pub use neighbours::{Neighbour, Neighbourhood, Side};
 pub use nexus_proto as proto;
 pub use nexus_proto::NodeId;
-pub use reference::{Interpolator, Reference, StepInterpolator};
+pub use reference::{
+    InterpolationMode, Interpolator, Quintic, Reference, SplineInterpolator, StepInterpolator,
+    SwitchableInterpolator,
+};
 pub use safety::{SafetySupervisor, TorqueLimiter};
 pub use sensors::SensorFrame;
 
 /// The node as currently assembled from the default stages.
 pub type DefaultActuator =
-    Actuator<EncoderEstimator, StepInterpolator, JointController, NetworkDamper, TorqueLimiter>;
+    Actuator<EncoderEstimator, SwitchableInterpolator, JointController, NetworkDamper, TorqueLimiter>;
 
 /// Builds the default node for `config` at `line_position`.
 #[must_use]
@@ -59,7 +62,7 @@ pub fn default_actuator(config: NodeConfig, line_position: u8) -> DefaultActuato
         line_position,
         Stages {
             estimator: EncoderEstimator::new(&config),
-            interpolator: StepInterpolator::default(),
+            interpolator: SwitchableInterpolator::new(config.cycle_seconds()),
             controller: JointController::new(&config),
             damper: NetworkDamper::new(&config),
             safety: TorqueLimiter,

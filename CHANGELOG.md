@@ -7,6 +7,10 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-10** Joint-level interpolation: quintic segments to cycle-stamped goals, shared
+  bus clock, smooth coast on missing goals, run-time switch from central setpoint
+  following. Against central interpolation: jerk 3.0× / 5.0× / 1.4× lower and path error
+  2–4× lower on figure of eight / pick and place / fast reach.
 - **NX-09** Host side of motion: VLA policy emulator (rate, latency, jitter, drops),
   scripted tasks, damped-least-squares IK on the nominal kinematics, the central
   interpolation baseline and joint-level goals, a host work counter, and a motion

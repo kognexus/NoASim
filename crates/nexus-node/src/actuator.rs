@@ -9,7 +9,7 @@ use crate::gravity::{GravityCompensator, GravitySource};
 use crate::io::{Inbox, Outbox};
 use crate::models::{ModelChoice, ModelSet};
 use crate::neighbours::Neighbourhood;
-use crate::reference::Interpolator;
+use crate::reference::{InterpolationMode, Interpolator};
 use crate::safety::SafetySupervisor;
 use crate::sensors::SensorFrame;
 use nexus_proto::{
@@ -168,6 +168,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
                 self.settings = *settings;
                 self.models.choice = ModelChoice::from_byte(settings.model);
                 self.gravity_source = GravitySource::from_byte(settings.gravity);
+                self.stages.interpolator.set_mode(InterpolationMode::from_byte(settings.interpolation));
             }
             Frame::Announce(header, announce) => {
                 self.neighbours.on_announce(self.line_position, header.source, announce);
