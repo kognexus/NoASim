@@ -2,50 +2,74 @@
  * Runs one Nexus node (the `nexus-wasm` crate) in its own WebAssembly instance.
  *
  * Every call to {@link WasmNode.instantiate} creates a fresh instance with its own linear
- * memory, so joints cannot share state. The harness talks to a node only through the
- * node's I/O block: it writes the node's own sensor frame, calls {@link WasmNode.tick},
- * and reads the command back.
+ * memory, so joints cannot share state. The harness talks to a node only through its I/O
+ * block: it writes the node's own sensor frame, the bus cycle and the frames the bus
+ * delivered, calls {@link WasmNode.tick}, and reads back the torque and the frames the
+ * node sent. The block's layout comes from the module itself (`nexus_layout`).
  */
+import type { SensorFrame } from "../sensors/jointSensors.ts";
+import { type NodeConfig, packNodeConfig } from "./nodeConfig.ts";
 
 /** Exports of the `nexus-wasm` module (see `crates/nexus-wasm/src/lib.rs`). */
 interface NexusExports {
   readonly memory: WebAssembly.Memory;
   nexus_io_ptr(): number;
-  nexus_io_len(): number;
-  nexus_init(id: number, target: number, stiffness: number, damping: number): void;
+  nexus_layout(field: number): number;
+  nexus_init(linePosition: number): void;
   nexus_tick(): void;
 }
 
-/** Offsets (in `f32` slots) of the fields in the node's `Io` block. */
-const IO_LAYOUT = {
-  motorAngle: 0,
-  motorVelocity: 1,
-  torque: 2,
-  /** Total number of `f32` slots; checked against the module at instantiation. */
-  length: 3,
-} as const;
+/** Byte offsets and sizes of the I/O block, as reported by the module. */
+interface IoLayout {
+  config: number;
+  sensors: number;
+  cycle: number;
+  inboxLen: number;
+  outboxLen: number;
+  torque: number;
+  inbox: number;
+  outbox: number;
+  inboxCapacity: number;
+  outboxCapacity: number;
+  configSize: number;
+  sensorsSize: number;
+}
 
-/** Sensor readings the harness hands to a node for one cycle (NX-01 subset). */
-export interface NodeSensors {
-  motorAngle: number;
-  motorVelocity: number;
+/** Number of `f32` fields in the node's `SensorFrame`. */
+const SENSOR_FIELDS = 11;
+
+function readLayout(exports: NexusExports): IoLayout {
+  const base = exports.nexus_io_ptr();
+  const at = (field: number) => exports.nexus_layout(field);
+  return {
+    config: base + at(0),
+    sensors: base + at(1),
+    cycle: base + at(2),
+    inboxLen: base + at(3),
+    outboxLen: base + at(4),
+    torque: base + at(5),
+    inbox: base + at(6),
+    outbox: base + at(7),
+    inboxCapacity: at(8),
+    outboxCapacity: at(9),
+    configSize: at(11),
+    sensorsSize: at(12),
+  };
 }
 
 export class WasmNode {
   readonly #exports: NexusExports;
-  readonly #ioOffset: number;
-  #io: Float32Array;
+  readonly #layout: IoLayout;
+  readonly #sensors = new Float32Array(SENSOR_FIELDS);
 
   private constructor(exports: NexusExports) {
     this.#exports = exports;
-    this.#ioOffset = exports.nexus_io_ptr();
-    const bytes = exports.nexus_io_len();
-    if (bytes !== IO_LAYOUT.length * Float32Array.BYTES_PER_ELEMENT) {
+    this.#layout = readLayout(exports);
+    if (this.#layout.sensorsSize !== SENSOR_FIELDS * 4) {
       throw new Error(
-        `nexus-wasm I/O block is ${bytes} bytes; harness expects ${IO_LAYOUT.length * 4}`,
+        `node sensor frame is ${this.#layout.sensorsSize} bytes; harness writes ${SENSOR_FIELDS * 4}`,
       );
     }
-    this.#io = this.#view();
   }
 
   /** Creates a new, isolated node instance from a compiled `nexus-wasm` module. */
@@ -59,27 +83,60 @@ export class WasmNode {
     return this.#exports.memory;
   }
 
-  /** Starts the node with its bus address and a position-hold target (NX-01 placeholder). */
-  init(id: number, target: number, stiffness: number, damping: number): void {
-    this.#exports.nexus_init(id, target, stiffness, damping);
+  /** Capacity of the node's inbox, bytes. */
+  get inboxCapacity(): number {
+    return this.#layout.inboxCapacity;
   }
 
-  /** Runs one bus cycle with the given sensor frame and returns the motor torque in N·m. */
-  tick(sensors: NodeSensors): number {
-    const io = this.#ioView();
-    io[IO_LAYOUT.motorAngle] = sensors.motorAngle;
-    io[IO_LAYOUT.motorVelocity] = sensors.motorVelocity;
+  /** Writes the node's EEPROM contents and powers it on at bus line position `linePosition`. */
+  init(config: NodeConfig, linePosition: number): void {
+    const packed = packNodeConfig(config);
+    if (packed.length * 4 !== this.#layout.configSize) {
+      throw new Error(
+        `node config is ${this.#layout.configSize} bytes; harness packs ${packed.length * 4}`,
+      );
+    }
+    new Float32Array(this.#exports.memory.buffer, this.#layout.config, packed.length).set(packed);
+    this.#exports.nexus_init(linePosition);
+  }
+
+  /**
+   * Runs one bus cycle.
+   *
+   * @param inbox mailbox records delivered by the bus this cycle
+   * @returns the motor torque (output-referred, N·m) and the mailbox records the node sent
+   *   (a copy, safe to keep)
+   */
+  tick(
+    cycle: number,
+    sensors: SensorFrame,
+    inbox: Uint8Array,
+  ): { torque: number; outbox: Uint8Array } {
+    const { buffer } = this.#exports.memory;
+    const layout = this.#layout;
+    if (inbox.length > layout.inboxCapacity)
+      throw new Error(`inbox overflow: ${inbox.length} bytes`);
+    const s = this.#sensors;
+    s[0] = sensors.motorAngle;
+    s[1] = sensors.outputAngle;
+    s[2] = sensors.hallSector;
+    s.set(sensors.gyro, 3);
+    s.set(sensors.accel, 6);
+    s[9] = sensors.current;
+    s[10] = sensors.temperature;
+    new Float32Array(buffer, layout.sensors, SENSOR_FIELDS).set(s);
+    const view = new DataView(buffer);
+    view.setUint32(layout.cycle, cycle, true);
+    view.setUint32(layout.inboxLen, inbox.length, true);
+    new Uint8Array(buffer, layout.inbox, inbox.length).set(inbox);
+
     this.#exports.nexus_tick();
-    return io[IO_LAYOUT.torque] ?? 0;
-  }
 
-  /** Returns the I/O view, re-creating it if the instance's memory was grown. */
-  #ioView(): Float32Array {
-    if (this.#io.buffer !== this.#exports.memory.buffer) this.#io = this.#view();
-    return this.#io;
-  }
-
-  #view(): Float32Array {
-    return new Float32Array(this.#exports.memory.buffer, this.#ioOffset, IO_LAYOUT.length);
+    const after = new DataView(this.#exports.memory.buffer);
+    const outboxLen = after.getUint32(layout.outboxLen, true);
+    return {
+      torque: after.getFloat32(layout.torque, true),
+      outbox: new Uint8Array(this.#exports.memory.buffer, layout.outbox, outboxLen).slice(),
+    };
   }
 }

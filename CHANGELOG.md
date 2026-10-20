@@ -7,6 +7,10 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-05** Bus protocol (`nexus-proto`: State, Goal, Limits, Announce, Assign frames,
+  golden-byte layout shared with a TypeScript codec), node core (`nexus-node`: `Actuator`
+  composed of estimator, interpolator, controller and safety traits), self-describing
+  WASM I/O block with inbox and outbox, `nodeConfigFor` EEPROM builder.
 - **NX-04** Hidden actuator families: composable physics effects (Stribeck and
   position-dependent friction, cogging, current ripple, torque-constant drift, cubic
   stiffening, Dahl hysteresis, backlash), five open families and one sealed family for the

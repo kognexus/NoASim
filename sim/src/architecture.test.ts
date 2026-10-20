@@ -25,9 +25,19 @@ function dependencies(cargoToml: string): string[] {
 }
 
 describe("architecture", () => {
-  it("node-side TypeScript does not import the plant, actuators or ground truth", async () => {
-    for (const { path, text } of await sources(new URL("sim/src/node/", ROOT))) {
-      expect(text, path).not.toMatch(/from\s+["'][^"']*\/(plant|actuators|analysis)\//);
+  it("node-side TypeScript sees only nominal data, never the plant or hidden actuators", async () => {
+    const files = (await sources(new URL("sim/src/node/", ROOT))).filter(
+      (f) => !f.path.endsWith(".test.ts"),
+    );
+    expect(files.length).toBeGreaterThan(0);
+    for (const { path, text } of files) {
+      const imports = [...text.matchAll(/from\s+["']([^"']+)["']/g)].map((m) => m[1] ?? "");
+      for (const target of imports) {
+        // The nominal ArmSpec is the node's EEPROM content; everything else in plant/ is truth.
+        const allowed =
+          !/\/(plant|actuators|analysis)\//.test(target) || target.endsWith("/plant/armSpec.ts");
+        expect(allowed, `${path} imports ${target}`).toBe(true);
+      }
     }
   });
 
