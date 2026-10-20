@@ -7,6 +7,9 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-03** Sensor models of the Nexus unit (dual absolute encoders, Hall, 6-axis IMU,
+  current, winding temperature), seeded random streams, motor electrical and thermal
+  data in `ActuatorSpec`, ideal drive and two-node thermal model.
 - **NX-02** `ArmSpec` → MJCF generator for any serial arm (QDD motor + gear-spring hinge per
   joint, lumped link bending, IMU on the actuator housing), the KX-6 default arm, `Plant`
   wrapper with named access to ground truth, impulse modal test. KX-6 first modes: 9.7 Hz

@@ -11,6 +11,30 @@
 
 export type Vec3 = readonly [number, number, number];
 
+/** Lumped two-node thermal network: winding → housing → ambient. */
+export interface ThermalSpec {
+  /** Thermal resistance winding → housing, K/W. */
+  readonly windingToHousing: number;
+  /** Thermal resistance housing → ambient, K/W. */
+  readonly housingToAmbient: number;
+  /** Heat capacity of the winding, J/K. */
+  readonly windingCapacity: number;
+  /** Heat capacity of the housing, J/K. */
+  readonly housingCapacity: number;
+  /** Winding temperature limit, °C. */
+  readonly maxWindingTemperature: number;
+}
+
+/** Electrical side of the motor, at the motor shaft. */
+export interface ElectricalSpec {
+  /** Torque constant at the motor shaft, N·m/A (q-axis, peak-amplitude convention). */
+  readonly torqueConstant: number;
+  readonly polePairs: number;
+  /** Phase resistance at 20 °C, Ω. */
+  readonly phaseResistance: number;
+  readonly thermal: ThermalSpec;
+}
+
 /** A quasi-direct-drive actuator, described at the joint output. */
 export interface ActuatorSpec {
   /** Gear ratio, motor turns per output turn. */
@@ -31,6 +55,7 @@ export interface ActuatorSpec {
   readonly peakTorque: number;
   /** Whether a holding brake is fitted. */
   readonly brake: boolean;
+  readonly electrical: ElectricalSpec;
 }
 
 /** Lumped bending flexibility of a link: one bending joint (two axes) at mid-length. */
@@ -82,6 +107,11 @@ export function reflectedInertia(actuator: ActuatorSpec): number {
   return actuator.rotorInertia * actuator.gearRatio ** 2;
 }
 
+/** Torque constant at the output, N·m/A. */
+export function outputTorqueConstant(actuator: ActuatorSpec): number {
+  return actuator.electrical.torqueConstant * actuator.gearRatio;
+}
+
 /**
  * Checks an arm spec for values that would make an invalid or meaningless model.
  *
@@ -107,6 +137,13 @@ export function validateArmSpec(spec: ArmSpec): string[] {
       ["ratedTorque", a.ratedTorque],
       ["peakTorque", a.peakTorque],
       ["link.mass", joint.link.mass],
+      ["electrical.torqueConstant", a.electrical.torqueConstant],
+      ["electrical.polePairs", a.electrical.polePairs],
+      ["electrical.phaseResistance", a.electrical.phaseResistance],
+      ["thermal.windingToHousing", a.electrical.thermal.windingToHousing],
+      ["thermal.housingToAmbient", a.electrical.thermal.housingToAmbient],
+      ["thermal.windingCapacity", a.electrical.thermal.windingCapacity],
+      ["thermal.housingCapacity", a.electrical.thermal.housingCapacity],
       ["link.radius", joint.link.radius],
     ];
     for (const [field, value] of positive) {

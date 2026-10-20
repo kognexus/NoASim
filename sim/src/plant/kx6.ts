@@ -7,7 +7,19 @@
  * of the stretched arm sits in the 8–15 Hz band with 1–3 % damping, as expected for
  * lightweight arms (PLAN §4, NX-02).
  */
-import type { ActuatorSpec, ArmSpec } from "./armSpec.ts";
+import type { ActuatorSpec, ArmSpec, ThermalSpec } from "./armSpec.ts";
+
+/**
+ * Thermal network of a ~85 mm actuator: about 1.9 K/W winding to ambient and a time
+ * constant of several minutes, so rated torque settles near 110 °C in 25 °C air.
+ */
+const THERMAL_LARGE: ThermalSpec = {
+  windingToHousing: 0.7,
+  housingToAmbient: 1.2,
+  windingCapacity: 180,
+  housingCapacity: 650,
+  maxWindingTemperature: 130,
+};
 
 /** Shoulder and elbow class: 9:1, high-pole SPM motor. */
 const LARGE: ActuatorSpec = {
@@ -20,10 +32,33 @@ const LARGE: ActuatorSpec = {
   ratedTorque: 30,
   peakTorque: 90,
   brake: false,
+  // 30-slot / 32-pole SPM from the motor study: 3.3 N·m at 10.5 A rated.
+  electrical: {
+    torqueConstant: 0.316,
+    polePairs: 16,
+    phaseResistance: 0.2,
+    thermal: THERMAL_LARGE,
+  },
 };
 
 /** Shoulder pitch carries the whole arm, so it gets the larger motor. */
-const SHOULDER: ActuatorSpec = { ...LARGE, rotorInertia: 3.5e-4, ratedTorque: 60, peakTorque: 160 };
+const SHOULDER: ActuatorSpec = {
+  ...LARGE,
+  rotorInertia: 3.5e-4,
+  ratedTorque: 60,
+  peakTorque: 160,
+  electrical: {
+    torqueConstant: 0.63,
+    polePairs: 16,
+    phaseResistance: 0.24,
+    thermal: {
+      ...THERMAL_LARGE,
+      windingCapacity: 300,
+      housingCapacity: 1000,
+      housingToAmbient: 0.9,
+    },
+  },
+};
 
 /** Wrist class: 9:1, smaller motor. */
 const WRIST: ActuatorSpec = {
@@ -36,6 +71,18 @@ const WRIST: ActuatorSpec = {
   ratedTorque: 10,
   peakTorque: 30,
   brake: false,
+  electrical: {
+    torqueConstant: 0.15,
+    polePairs: 14,
+    phaseResistance: 0.3,
+    thermal: {
+      windingToHousing: 0.8,
+      housingToAmbient: 1.8,
+      windingCapacity: 60,
+      housingCapacity: 220,
+      maxWindingTemperature: 130,
+    },
+  },
 };
 
 export const KX6: ArmSpec = {
