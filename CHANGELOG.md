@@ -7,6 +7,9 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-06** EtherCAT-like bus (latency, jitter, loss, cable cut, byte budget), host
+  discovery with watchdog, node neighbour table, and `ArmSystem`, the composition root
+  that runs plant, actuators, sensors, nodes, bus and host one cycle at a time.
 - **NX-05** Bus protocol (`nexus-proto`: State, Goal, Limits, Announce, Assign frames,
   golden-byte layout shared with a TypeScript codec), node core (`nexus-node`: `Actuator`
   composed of estimator, interpolator, controller and safety traits), self-describing

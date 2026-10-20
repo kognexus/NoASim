@@ -4,6 +4,7 @@ use crate::config::NodeConfig;
 use crate::control::Controller;
 use crate::estimate::{Estimate, Estimator};
 use crate::io::{Inbox, Outbox};
+use crate::neighbours::Neighbourhood;
 use crate::reference::Interpolator;
 use crate::safety::SafetySupervisor;
 use crate::sensors::SensorFrame;
@@ -24,6 +25,7 @@ pub struct Actuator<E, I, C, S> {
     controller: C,
     safety: S,
     last: Estimate,
+    neighbours: Neighbourhood,
 }
 
 impl<E: Estimator, I: Interpolator, C: Controller, S: SafetySupervisor> Actuator<E, I, C, S> {
@@ -56,6 +58,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, S: SafetySupervisor> Actuator
             controller,
             safety,
             last: Estimate::default(),
+            neighbours: Neighbourhood::default(),
         }
     }
 
@@ -75,6 +78,12 @@ impl<E: Estimator, I: Interpolator, C: Controller, S: SafetySupervisor> Actuator
     #[must_use]
     pub const fn estimate(&self) -> &Estimate {
         &self.last
+    }
+
+    /// The joints next to this one, as far as discovery and the bus have told it.
+    #[must_use]
+    pub const fn neighbours(&self) -> &Neighbourhood {
+        &self.neighbours
     }
 
     /// Runs one bus cycle and returns the motor torque (output-referred, N·m).
@@ -110,7 +119,13 @@ impl<E: Estimator, I: Interpolator, C: Controller, S: SafetySupervisor> Actuator
                 self.has_limits = true;
             }
             Frame::Goal(_, goal) => self.interpolator.add_goal(goal, cycle),
-            _ => {}
+            Frame::Announce(header, announce) => {
+                self.neighbours.on_announce(self.line_position, header.source, announce);
+            }
+            Frame::State(header, state) => {
+                self.neighbours.on_state(header.source, state, header.cycle, cycle);
+            }
+            Frame::Assign(..) => {}
         }
     }
 
