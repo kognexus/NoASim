@@ -1,0 +1,7 @@
+# Markdown is hand-wrapped; tables stay as written.
+*.md
+target/
+pkg/
+dist/
+results/
+package-lock.json

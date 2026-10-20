@@ -1,0 +1,7 @@
+{
+  "name": "@kognexus/sim",
+  "private": true,
+  "description": "Simulation harness: plant, sensors, bus, host and scenarios. Runs in the browser and in Node.",
+  "type": "module",
+  "main": "src/index.ts"
+}

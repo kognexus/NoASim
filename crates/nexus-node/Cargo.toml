@@ -1,0 +1,14 @@
+[package]
+name = "nexus-node"
+description = "Firmware-shaped control logic of one Nexus actuator node."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+nexus-proto = { path = "../nexus-proto" }
+
+[lints]
+workspace = true
