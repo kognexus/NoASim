@@ -5,7 +5,7 @@
  * (`web/`).
  */
 import { BUS_CYCLE_HZ } from "../src/index.ts";
-import { nodeConfigFor } from "../src/node/nodeConfig.ts";
+import { nodeConfigsFor } from "../src/harness/gains.ts";
 import { WasmNode } from "../src/node/wasmNode.ts";
 import { IdealDrive } from "../src/plant/drive.ts";
 import { KX6 } from "../src/plant/kx6.ts";
@@ -26,11 +26,14 @@ export async function measureStepRate(
   simSeconds = 5,
 ): Promise<number> {
   const plants = Array.from({ length: arms }, () => Plant.create(mujoco, KX6));
+  const configs = nodeConfigsFor(KX6, BUS_CYCLE_HZ);
   const joints = await Promise.all(
     plants.flatMap((plant, a) =>
       KX6.joints.map(async (joint, i) => {
         const node = await WasmNode.instantiate(nodeModule);
-        node.init(nodeConfigFor(joint, BUS_CYCLE_HZ), i + 1);
+        const config = configs[i];
+        if (!config) throw new Error(`no config for joint ${joint.name}`);
+        node.init(config, i + 1);
         const rng = new Random(a).derive(joint.name);
         const sensors = new JointSensors(joint.actuator, NEXUS_SENSORS, BUS_CYCLE_HZ, rng);
         return {

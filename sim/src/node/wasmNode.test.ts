@@ -10,14 +10,14 @@ import {
 } from "../bus/protocol.ts";
 import { KX6 } from "../plant/kx6.ts";
 import { emptySensorFrame, type SensorFrame } from "../sensors/jointSensors.ts";
-import { nodeConfigFor } from "./nodeConfig.ts";
+import { nodeConfigsFor } from "../harness/gains.ts";
 import { WasmNode } from "./wasmNode.ts";
 
 const WASM_PATH = new URL(
   "../../../target/wasm32-unknown-unknown/release/nexus_wasm.wasm",
   import.meta.url,
 );
-const CONFIG = nodeConfigFor(KX6.joints[2]!, 4000);
+const CONFIG = nodeConfigsFor(KX6, 4000)[2]!;
 
 const assign = (position: number, id: number) =>
   encodeRecords([

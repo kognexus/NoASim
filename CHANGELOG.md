@@ -7,6 +7,12 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-07** Node control stack: output-encoder joint controller with rotor damping,
+  richer estimator (twist torque, current torque, acceleration), nominal and RLS friction
+  models, local and network dampers behind energy tanks, run-time `Settings` frame. Harness
+  gets actuation delay, physics substeps, gain sizing from nominal kinematics, the tap
+  scenario and settling metrics. ADR-0003 records why joint control on a QDD is limited,
+  and which acceptance criterion is still open.
 - **NX-06** EtherCAT-like bus (latency, jitter, loss, cable cut, byte budget), host
   discovery with watchdog, node neighbour table, and `ArmSystem`, the composition root
   that runs plant, actuators, sensors, nodes, bus and host one cycle at a time.

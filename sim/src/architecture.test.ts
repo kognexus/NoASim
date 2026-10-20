@@ -46,7 +46,8 @@ describe("architecture", () => {
     const wasm = await readFile(new URL("crates/nexus-wasm/Cargo.toml", ROOT), "utf8");
     const proto = await readFile(new URL("crates/nexus-proto/Cargo.toml", ROOT), "utf8");
     expect(dependencies(proto)).toEqual([]);
-    expect(dependencies(node)).toEqual(["nexus-proto"]);
+    // libm: maths functions for no_std (no I/O, no state).
+    expect(dependencies(node)).toEqual(["libm", "nexus-proto"]);
     expect(dependencies(wasm)).toEqual(["nexus-node"]);
   });
 });

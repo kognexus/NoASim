@@ -8,6 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+libm = { version = "0.2", default-features = false }
 nexus-proto = { path = "../nexus-proto" }
 
 [lints]

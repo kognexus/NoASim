@@ -2,43 +2,56 @@
 
 use crate::config::NodeConfig;
 use crate::control::Controller;
+use crate::damping::{Damper, DampingContext};
+use crate::dynamics::DynamicsModel;
 use crate::estimate::{Estimate, Estimator};
 use crate::io::{Inbox, Outbox};
+use crate::models::{ModelChoice, ModelSet};
 use crate::neighbours::Neighbourhood;
 use crate::reference::Interpolator;
 use crate::safety::SafetySupervisor;
 use crate::sensors::SensorFrame;
-use nexus_proto::{Destination, Frame, FrameKind, Header, Limits, NodeId, NodeState, StatusFlags};
+use nexus_proto::{
+    DampingMode, Destination, Frame, FrameKind, Header, Limits, NodeId, NodeState, Settings, StatusFlags,
+};
+
+/// The swappable stages a node is built from.
+pub struct Stages<E, I, C, D, S> {
+    /// Sensors → estimate.
+    pub estimator: E,
+    /// Goals → per-cycle reference.
+    pub interpolator: I,
+    /// Estimate + reference → torque.
+    pub controller: C,
+    /// Vibration damping on top of the controller.
+    pub damper: D,
+    /// Limits on the final torque.
+    pub safety: S,
+}
 
 /// One actuator node, composed of swappable stages.
 ///
-/// Each cycle: estimate → handle inbox → interpolate → control → safety → publish.
-pub struct Actuator<E, I, C, S> {
+/// Each cycle: estimate → handle inbox → learn → interpolate → control + damping →
+/// safety → publish.
+pub struct Actuator<E, I, C, D, S> {
     config: NodeConfig,
     line_position: u8,
     id: NodeId,
     limits: Limits,
     has_limits: bool,
     started: bool,
-    estimator: E,
-    interpolator: I,
-    controller: C,
-    safety: S,
+    stages: Stages<E, I, C, D, S>,
+    models: ModelSet,
+    settings: Settings,
     last: Estimate,
+    last_damping: f32,
     neighbours: Neighbourhood,
 }
 
-impl<E: Estimator, I: Interpolator, C: Controller, S: SafetySupervisor> Actuator<E, I, C, S> {
+impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySupervisor> Actuator<E, I, C, D, S> {
     /// Creates the node at `line_position` (its place in the bus line, counted from the
     /// host, as an `EtherCAT` auto-increment address).
-    pub fn new(
-        config: NodeConfig,
-        line_position: u8,
-        estimator: E,
-        interpolator: I,
-        controller: C,
-        safety: S,
-    ) -> Self {
+    pub fn new(config: NodeConfig, line_position: u8, stages: Stages<E, I, C, D, S>) -> Self {
         Self {
             limits: Limits {
                 max_torque: config.peak_torque,
@@ -53,11 +66,11 @@ impl<E: Estimator, I: Interpolator, C: Controller, S: SafetySupervisor> Actuator
             id: NodeId::UNASSIGNED,
             has_limits: false,
             started: false,
-            estimator,
-            interpolator,
-            controller,
-            safety,
+            models: ModelSet::new(&config),
+            stages,
+            settings: Settings::default(),
             last: Estimate::default(),
+            last_damping: 0.0,
             neighbours: Neighbourhood::default(),
         }
     }
@@ -80,6 +93,18 @@ impl<E: Estimator, I: Interpolator, C: Controller, S: SafetySupervisor> Actuator
         &self.last
     }
 
+    /// The node's dynamics models.
+    #[must_use]
+    pub const fn models(&self) -> &ModelSet {
+        &self.models
+    }
+
+    /// The behaviour switches the host set.
+    #[must_use]
+    pub const fn settings(&self) -> &Settings {
+        &self.settings
+    }
+
     /// The joints next to this one, as far as discovery and the bus have told it.
     #[must_use]
     pub const fn neighbours(&self) -> &Neighbourhood {
@@ -88,19 +113,25 @@ impl<E: Estimator, I: Interpolator, C: Controller, S: SafetySupervisor> Actuator
 
     /// Runs one bus cycle and returns the motor torque (output-referred, N·m).
     pub fn tick(&mut self, cycle: u32, sensors: &SensorFrame, inbox: &Inbox, outbox: &mut Outbox) -> f32 {
-        let estimate = self.estimator.update(sensors);
+        let estimate = self.stages.estimator.update(sensors);
         if !self.started {
             // Power-on: hold where the joint is.
-            self.interpolator.hold(estimate.output_angle);
+            self.stages.interpolator.hold(estimate.output_angle);
             self.started = true;
         }
         for frame in inbox.frames().flatten() {
             self.handle(&frame, cycle, outbox);
         }
-        let reference = self.interpolator.reference(cycle);
-        let demand = self.controller.torque(&estimate, &reference);
-        let torque = self.safety.limit(demand, &estimate, &self.limits);
+        self.models.observe(&estimate);
+        let reference = self.stages.interpolator.reference(cycle);
+        let feedforward = self.models.friction(reference.position, reference.velocity);
+        let control = self.stages.controller.torque(&estimate, &reference, feedforward);
+        let context = DampingContext { neighbours: &self.neighbours, now: cycle };
+        let cap = self.limits.network_torque_share * self.limits.max_torque;
+        let damping = self.stages.damper.torque(self.settings.damping, &estimate, &context).clamp(-cap, cap);
+        let torque = self.stages.safety.limit(control + damping, &estimate, &self.limits);
         self.last = estimate;
+        self.last_damping = damping;
         if self.id != NodeId::UNASSIGNED {
             outbox.push(&self.state_frame(cycle, &estimate, torque));
         }
@@ -118,7 +149,11 @@ impl<E: Estimator, I: Interpolator, C: Controller, S: SafetySupervisor> Actuator
                 self.limits = *limits;
                 self.has_limits = true;
             }
-            Frame::Goal(_, goal) => self.interpolator.add_goal(goal, cycle),
+            Frame::Goal(_, goal) => self.stages.interpolator.add_goal(goal, cycle),
+            Frame::Settings(_, settings) => {
+                self.settings = *settings;
+                self.models.choice = ModelChoice::from_byte(settings.model);
+            }
             Frame::Announce(header, announce) => {
                 self.neighbours.on_announce(self.line_position, header.source, announce);
             }
@@ -138,6 +173,9 @@ impl<E: Estimator, I: Interpolator, C: Controller, S: SafetySupervisor> Actuator
         if self.has_limits {
             status |= StatusFlags::READY;
         }
+        if self.settings.damping != DampingMode::Off && self.last_damping != 0.0 {
+            status |= StatusFlags::NETWORK_DAMPING;
+        }
         Frame::State(
             self.header(FrameKind::State, Destination::Neighbours, cycle),
             NodeState {
@@ -151,12 +189,12 @@ impl<E: Estimator, I: Interpolator, C: Controller, S: SafetySupervisor> Actuator
                 accel: e.accel,
                 current: e.current,
                 torque_command: torque,
-                network_torque: 0.0,
+                network_torque: self.last_damping,
                 temperature: e.temperature,
                 thermal_headroom: ((self.config.max_temperature - e.temperature)
                     / self.config.max_temperature)
                     .clamp(0.0, 1.0),
-                tank_energy: 0.0,
+                tank_energy: self.stages.damper.tank_energy(),
             },
         )
     }

@@ -14,18 +14,26 @@
 mod actuator;
 mod config;
 mod control;
+mod damping;
+mod dynamics;
 mod estimate;
+mod filters;
 mod io;
+mod models;
 mod neighbours;
 mod reference;
 mod safety;
 mod sensors;
 
-pub use actuator::Actuator;
+pub use actuator::{Actuator, Stages};
 pub use config::NodeConfig;
-pub use control::{Controller, PdController};
+pub use control::{Controller, JointController};
+pub use damping::{Damper, DampingContext, EnergyTank, LocalDamper, NetworkDamper, MAX_NEIGHBOUR_AGE};
+pub use dynamics::{DynamicsModel, NominalModel, RlsModel};
 pub use estimate::{EncoderEstimator, Estimate, Estimator, TrackingObserver};
+pub use filters::{HighPass, LowPass};
 pub use io::{Frames, Inbox, Outbox};
+pub use models::{ModelChoice, ModelSet};
 pub use neighbours::{Neighbour, Neighbourhood, Side};
 pub use nexus_proto as proto;
 pub use nexus_proto::NodeId;
@@ -34,7 +42,8 @@ pub use safety::{SafetySupervisor, TorqueLimiter};
 pub use sensors::SensorFrame;
 
 /// The node as currently assembled from the default stages.
-pub type DefaultActuator = Actuator<EncoderEstimator, StepInterpolator, PdController, TorqueLimiter>;
+pub type DefaultActuator =
+    Actuator<EncoderEstimator, StepInterpolator, JointController, NetworkDamper, TorqueLimiter>;
 
 /// Builds the default node for `config` at `line_position`.
 #[must_use]
@@ -42,9 +51,12 @@ pub fn default_actuator(config: NodeConfig, line_position: u8) -> DefaultActuato
     Actuator::new(
         config,
         line_position,
-        EncoderEstimator::new(&config),
-        StepInterpolator::default(),
-        PdController::new(&config),
-        TorqueLimiter,
+        Stages {
+            estimator: EncoderEstimator::new(&config),
+            interpolator: StepInterpolator::default(),
+            controller: JointController::new(&config),
+            damper: NetworkDamper::new(&config),
+            safety: TorqueLimiter,
+        },
     )
 }

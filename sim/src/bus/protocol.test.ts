@@ -69,6 +69,10 @@ const SAMPLES: Record<string, Frame> = {
     },
   },
   assign: { header: header(FrameKind.Assign, 0, 0xff), assign: { position: 4, id: 4 } },
+  settings: {
+    header: header(FrameKind.Settings, 0, 0xff),
+    settings: { damping: 2, interpolation: 1, impactPolicy: 2, model: 1 },
+  },
 };
 
 const hex = (bytes: Uint8Array) =>

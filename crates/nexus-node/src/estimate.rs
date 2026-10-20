@@ -1,6 +1,7 @@
 //! Estimation: from raw sensor readings to the state the controller works with.
 
 use crate::config::NodeConfig;
+use crate::filters::LowPass;
 use crate::sensors::SensorFrame;
 
 /// The node's best knowledge of its own joint for this cycle.
@@ -14,8 +15,14 @@ pub struct Estimate {
     pub output_angle: f32,
     /// Output velocity, rad/s.
     pub output_velocity: f32,
-    /// Gear twist, rad.
+    /// Gear twist (output minus motor side), rad.
     pub gear_twist: f32,
+    /// Motor-side acceleration, low-pass filtered, rad/s².
+    pub motor_acceleration: f32,
+    /// Torque the gear transmits, from the twist and the nominal stiffness, N·m.
+    pub gear_torque: f32,
+    /// Motor torque from the measured current and the nominal torque constant, N·m.
+    pub motor_torque: f32,
     /// Measured current, A.
     pub current: f32,
     /// Winding temperature, °C.
@@ -72,12 +79,21 @@ impl TrackingObserver {
     }
 }
 
-/// Default estimator: tracking observers on both encoders, other readings passed through.
+/// Default estimator: tracking observers on both encoders, a filtered motor acceleration,
+/// and torque from current and from gear twist (no torque sensor needed).
 #[derive(Clone, Copy, Debug)]
 pub struct EncoderEstimator {
     motor: TrackingObserver,
     output: TrackingObserver,
+    acceleration: LowPass,
+    last_motor_velocity: Option<f32>,
+    dt: f32,
+    gear_stiffness: f32,
+    torque_constant: f32,
 }
+
+/// Corner of the acceleration filter, Hz.
+const ACCELERATION_FILTER_HZ: f32 = 40.0;
 
 impl EncoderEstimator {
     /// Estimator using the observer bandwidth from `config`.
@@ -87,6 +103,11 @@ impl EncoderEstimator {
         Self {
             motor: TrackingObserver::new(config.observer_hz, dt),
             output: TrackingObserver::new(config.observer_hz, dt),
+            acceleration: LowPass::new(ACCELERATION_FILTER_HZ, dt),
+            last_motor_velocity: None,
+            dt,
+            gear_stiffness: config.gear_stiffness,
+            torque_constant: config.output_torque_constant,
         }
     }
 }
@@ -95,12 +116,19 @@ impl Estimator for EncoderEstimator {
     fn update(&mut self, s: &SensorFrame) -> Estimate {
         let (_, motor_velocity) = self.motor.update(s.motor_angle);
         let (_, output_velocity) = self.output.update(s.output_angle);
+        let raw_acceleration =
+            (motor_velocity - self.last_motor_velocity.unwrap_or(motor_velocity)) / self.dt;
+        self.last_motor_velocity = Some(motor_velocity);
+        let gear_twist = s.output_angle - s.motor_angle;
         Estimate {
             motor_angle: s.motor_angle,
             motor_velocity,
             output_angle: s.output_angle,
             output_velocity,
-            gear_twist: s.output_angle - s.motor_angle,
+            gear_twist,
+            motor_acceleration: self.acceleration.update(raw_acceleration),
+            gear_torque: self.gear_stiffness * gear_twist,
+            motor_torque: self.torque_constant * s.current,
             current: s.current,
             temperature: s.temperature,
             gyro: s.gyro,

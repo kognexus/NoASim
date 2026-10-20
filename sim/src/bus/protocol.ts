@@ -13,6 +13,7 @@ export const FrameKind = {
   Limits: 3,
   Announce: 4,
   Assign: 5,
+  Settings: 6,
 } as const;
 export type FrameKind = (typeof FrameKind)[keyof typeof FrameKind];
 
@@ -94,12 +95,32 @@ export interface Assign {
   id: number;
 }
 
+/** How nodes damp vibration (PLAN §4 comparison modes). */
+export const DampingMode = {
+  off: 0,
+  local: 1,
+  network: 2,
+  networkWithSource: 3,
+} as const;
+export type DampingMode = (typeof DampingMode)[keyof typeof DampingMode];
+
+export interface Settings {
+  damping: DampingMode;
+  /** 0 = follow host setpoints directly, 1 = joint-level interpolation. */
+  interpolation: number;
+  /** PLAN §2.1; 0 = retreat and hold. */
+  impactPolicy: number;
+  /** 0 = nominal, 1 = fitted, 2 = learned. */
+  model: number;
+}
+
 export type Frame =
   | { header: Header & { kind: typeof FrameKind.State }; state: NodeState }
   | { header: Header & { kind: typeof FrameKind.Goal }; goal: Goal }
   | { header: Header & { kind: typeof FrameKind.Limits }; limits: Limits }
   | { header: Header & { kind: typeof FrameKind.Announce }; announce: Announce }
-  | { header: Header & { kind: typeof FrameKind.Assign }; assign: Assign };
+  | { header: Header & { kind: typeof FrameKind.Assign }; assign: Assign }
+  | { header: Header & { kind: typeof FrameKind.Settings }; settings: Settings };
 
 const PAYLOAD_LEN: Record<FrameKind, number> = {
   [FrameKind.State]: 4 + 17 * 4,
@@ -107,6 +128,7 @@ const PAYLOAD_LEN: Record<FrameKind, number> = {
   [FrameKind.Limits]: 24,
   [FrameKind.Announce]: 4 + 10 * 4,
   [FrameKind.Assign]: 4,
+  [FrameKind.Settings]: 4,
 };
 
 /** Encoded length of a frame of `kind`, header included. */
@@ -215,6 +237,12 @@ export function encodeFrame(frame: Frame): Uint8Array {
     w.u8(a.hasBrake ? 1 : 0);
     w.u16(a.modelVersion);
     w.f32(a.gearRatio, a.ratedTorque, a.peakTorque, ...a.axis, ...a.link, a.linkMass);
+  } else if ("settings" in frame) {
+    const st = frame.settings;
+    w.u8(st.damping);
+    w.u8(st.interpolation);
+    w.u8(st.impactPolicy);
+    w.u8(st.model);
   } else {
     w.u8(frame.assign.position);
     w.u8(frame.assign.id);
@@ -284,6 +312,16 @@ export function decodeFrame(bytes: Uint8Array): Frame {
         linkMass: r.f32(),
       };
       return { header: { kind, source, destination, cycle }, announce };
+    }
+    case FrameKind.Settings: {
+      const damping = r.u8();
+      const settings: Settings = {
+        damping: (damping <= 3 ? damping : 0) as DampingMode,
+        interpolation: r.u8(),
+        impactPolicy: r.u8(),
+        model: r.u8(),
+      };
+      return { header: { kind, source, destination, cycle }, settings };
     }
     default: {
       const assign = { position: r.u8(), id: r.u8() };

@@ -4,13 +4,16 @@
  * or interpolation.
  */
 import {
+  Address,
   type Announce,
   decodeFrame,
   decodeRecords,
   encodeFrame,
   encodeRecords,
   type Frame,
+  FrameKind,
   type Limits,
+  type Settings,
 } from "../bus/protocol.ts";
 import { Discovery, type DiscoveryEvents } from "./discovery.ts";
 
@@ -38,6 +41,9 @@ export class Host {
   readonly discovery: Discovery;
   /** Every frame the host received, decoded, for the current cycle (monitoring). */
   lastReceived: Frame[] = [];
+  /** Frames queued by the application (settings, goals), sent on the next tick. */
+  readonly #queue: Frame[] = [];
+  #settings: Settings = { damping: 0, interpolation: 0, impactPolicy: 0, model: 0 };
 
   constructor(options: HostOptions = {}) {
     const share = options.networkTorqueShare ?? 0.25;
@@ -55,10 +61,31 @@ export class Host {
     return encodeRecords(this.discovery.start(reachable, cycle).map(encodeFrame));
   }
 
+  /** The behaviour switches last sent to the nodes. */
+  get settings(): Settings {
+    return this.#settings;
+  }
+
+  /** Switches node behaviour (damping mode, model, …) for every node, from the next cycle. */
+  applySettings(changes: Partial<Settings>): void {
+    this.#settings = { ...this.#settings, ...changes };
+    this.#queue.push({
+      header: {
+        kind: FrameKind.Settings,
+        source: Address.host,
+        destination: Address.all,
+        cycle: 0,
+      },
+      settings: this.#settings,
+    });
+  }
+
   /** One host cycle: reads delivered records, returns records to send. */
   tick(cycle: number, inbox: Uint8Array): Uint8Array {
     this.lastReceived = decodeRecords(inbox).map(decodeFrame);
     const out = this.discovery.handle(this.lastReceived, cycle);
+    for (const frame of this.#queue.splice(0))
+      out.push({ ...frame, header: { ...frame.header, cycle } } as Frame);
     return encodeRecords(out.map(encodeFrame));
   }
 }

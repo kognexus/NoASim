@@ -23,6 +23,8 @@ pub enum FrameKind {
     Announce = 4,
     /// The host assigning a bus address to the node at a line position.
     Assign = 5,
+    /// The host switching node behaviour (damping mode and friends) at run time.
+    Settings = 6,
 }
 
 impl FrameKind {
@@ -33,6 +35,7 @@ impl FrameKind {
             3 => Self::Limits,
             4 => Self::Announce,
             5 => Self::Assign,
+            6 => Self::Settings,
             other => return Err(DecodeError::UnknownKind(other)),
         })
     }
@@ -46,6 +49,7 @@ impl FrameKind {
             Self::Limits => Limits::LEN,
             Self::Announce => Announce::LEN,
             Self::Assign => Assign::LEN,
+            Self::Settings => Settings::LEN,
         }
     }
 }
@@ -367,6 +371,66 @@ impl Assign {
     }
 }
 
+/// How a node damps vibration (the comparison modes of PLAN §4).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
+pub enum DampingMode {
+    /// Joint position control only.
+    #[default]
+    Off = 0,
+    /// Each joint damps from its own IMU and encoders.
+    Local = 1,
+    /// Joints also use their neighbours' data.
+    Network = 2,
+    /// Network damping plus report-to-source and correction at the source.
+    NetworkWithSource = 3,
+}
+
+impl DampingMode {
+    const fn from_byte(byte: u8) -> Self {
+        match byte {
+            1 => Self::Local,
+            2 => Self::Network,
+            3 => Self::NetworkWithSource,
+            _ => Self::Off,
+        }
+    }
+}
+
+/// Run-time behaviour switches the host sets for every node.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Settings {
+    /// How the node damps vibration.
+    pub damping: DampingMode,
+    /// Interpolation mode (0 = follow host setpoints directly, 1 = joint-level).
+    pub interpolation: u8,
+    /// Impact policy (see PLAN §2.1; 0 = retreat and hold).
+    pub impact_policy: u8,
+    /// Dynamics model (0 = nominal, 1 = fitted, 2 = learned).
+    pub model: u8,
+}
+
+impl Settings {
+    /// Payload length in bytes.
+    pub const LEN: usize = 4;
+
+    fn write(self, w: &mut Writer) {
+        w.u8(self.damping as u8);
+        w.u8(self.interpolation);
+        w.u8(self.impact_policy);
+        w.u8(self.model);
+    }
+
+    fn read(r: &mut Reader) -> Result<Self, DecodeError> {
+        Ok(Self {
+            damping: DampingMode::from_byte(r.u8()?),
+            interpolation: r.u8()?,
+            impact_policy: r.u8()?,
+            model: r.u8()?,
+        })
+    }
+}
+
 /// A decoded frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Frame {
@@ -380,6 +444,8 @@ pub enum Frame {
     Announce(Header, Announce),
     /// See [`Assign`].
     Assign(Header, Assign),
+    /// See [`Settings`].
+    Settings(Header, Settings),
 }
 
 impl Frame {
@@ -391,7 +457,8 @@ impl Frame {
             | Self::Goal(h, _)
             | Self::Limits(h, _)
             | Self::Announce(h, _)
-            | Self::Assign(h, _) => h,
+            | Self::Assign(h, _)
+            | Self::Settings(h, _) => h,
         }
     }
 
@@ -425,6 +492,7 @@ impl Frame {
             Self::Limits(_, p) => p.write(&mut w),
             Self::Announce(_, p) => p.write(&mut w),
             Self::Assign(_, p) => p.write(&mut w),
+            Self::Settings(_, p) => p.write(&mut w),
         }
         w.len()
     }
@@ -449,6 +517,7 @@ impl Frame {
             FrameKind::Limits => Self::Limits(header, Limits::read(&mut r)?),
             FrameKind::Announce => Self::Announce(header, Announce::read(&mut r)?),
             FrameKind::Assign => Self::Assign(header, Assign::read(&mut r)?),
+            FrameKind::Settings => Self::Settings(header, Settings::read(&mut r)?),
         })
     }
 }
