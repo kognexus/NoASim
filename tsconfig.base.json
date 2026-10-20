@@ -13,6 +13,8 @@
     "skipLibCheck": true,
     "composite": true,
     "noEmit": false,
-    "emitDeclarationOnly": true
+    "emitDeclarationOnly": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
   }
 }

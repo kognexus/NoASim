@@ -1,0 +1,13 @@
+{
+  "name": "@kognexus/web",
+  "private": true,
+  "description": "Interactive demo: twin arms, network on and off.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "vite": "^8.3.4"
+  }
+}

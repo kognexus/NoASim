@@ -12,3 +12,10 @@ dependencies = [
 [[package]]
 name = "nexus-proto"
 version = "0.1.0"
+
+[[package]]
+name = "nexus-wasm"
+version = "0.1.0"
+dependencies = [
+ "nexus-node",
+]

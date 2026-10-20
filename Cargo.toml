@@ -1,17 +1,23 @@
 [workspace]
 resolver = "2"
-members = ["crates/nexus-proto", "crates/nexus-node"]
+members = ["crates/nexus-proto", "crates/nexus-node", "crates/nexus-wasm"]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.88"
+rust-version = "1.99"
 authors = ["Kognexus"]
 repository = "https://github.com/kognexus/KognexusNexus"
 
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
 [workspace.lints.rust]
 missing_docs = "warn"
-unsafe_code = "forbid"
+unsafe_code = "deny"
 
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }

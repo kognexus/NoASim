@@ -29,22 +29,27 @@ to it, and tests check that nothing else reaches it.
 |---|---|
 | `crates/nexus-proto` | Bus frames shared by nodes and host (Rust, `no_std`) |
 | `crates/nexus-node` | Control logic of one actuator node (Rust, `no_std`) |
+| `crates/nexus-wasm` | Runs one node per WebAssembly instance (C ABI) |
 | `sim/` | Simulation harness: MuJoCo plant, sensor models, bus, host (TypeScript) |
+| `web/` | Browser demo (Vite); a step-cost page until NX-20 |
 | `docs/PLAN.md` | Behaviours, hypotheses, architecture and tickets |
 | `docs/adr/` | Architecture decision records |
 | `docs/tickets/` | One file per ticket, plus the generated board |
 
-More folders (`web/`, `experiments/`, `learning/`) arrive with their tickets.
+More folders (`experiments/`, `learning/`) arrive with their tickets.
 
 ## Getting started
 
-Requirements: Rust 1.88 (installed automatically by `rustup` from `rust-toolchain.toml`)
+Requirements: Rust 1.99 (installed automatically by `rustup` from `rust-toolchain.toml`)
 and Node.js 22 or newer.
 
 ```bash
 npm install
 npm run check
 ```
+
+To see the simulation speed on your machine, run `npm run bench:step` (headless) or
+`npm run dev -w web` and open the printed address.
 
 `npm run check` formats-checks, lints and tests both the Rust and the TypeScript code, and
 verifies that the ticket board is up to date.

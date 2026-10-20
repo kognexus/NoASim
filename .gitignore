@@ -17,3 +17,6 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+
+# Local agent configuration
+.claude/

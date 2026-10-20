@@ -1,4 +1,11 @@
 {
   "files": [],
-  "references": [{ "path": "sim" }]
+  "references": [
+    {
+      "path": "sim"
+    },
+    {
+      "path": "web"
+    }
+  ]
 }

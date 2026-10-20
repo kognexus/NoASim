@@ -214,7 +214,7 @@ crates/
   nexus-node/      no_std node: Estimator, Interpolator, Controller, NeighbourCoordinator,
                    SourceCorrector, SafetySupervisor, DynamicsModel traits + default impls,
                    Actuator composes them; PHNN inference (frozen weights, small MLPs)
-  nexus-wasm/      thin wasm-bindgen wrapper, one instance per joint
+  nexus-wasm/      thin C-ABI WebAssembly wrapper, one instance per joint (ADR-0002)
 sim/               TypeScript harness, runs in the browser and in Node
   plant/           ArmSpec → MJCF, MuJoCo stepping, hidden actuator families, disturbance injectors
   sensors/         encoder, Hall, IMU, current, thermal models

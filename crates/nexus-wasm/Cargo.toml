@@ -1,0 +1,17 @@
+[package]
+name = "nexus-wasm"
+description = "C-ABI WebAssembly wrapper that runs one Nexus node per instance."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+nexus-node = { path = "../nexus-node" }
+
+[lints]
+workspace = true

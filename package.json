@@ -4,21 +4,25 @@
   "description": "Simulation proving networked-actuator behaviours on a flexible 6-DOF arm.",
   "type": "module",
   "workspaces": [
-    "sim"
+    "sim",
+    "web"
   ],
   "scripts": {
-    "check": "npm run check:rust && npm run check:ts && npm run check:board",
+    "build:wasm": "cargo build -q -p nexus-wasm --target wasm32-unknown-unknown --release",
+    "check": "npm run check:rust && npm run build:wasm && npm run check:ts && npm run check:board",
     "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace --quiet",
     "check:ts": "prettier --check . && eslint . && tsc -b && vitest run",
     "check:board": "node tools/board.mjs --check",
     "board": "node tools/board.mjs",
-    "format": "cargo fmt --all && prettier --write ."
+    "format": "cargo fmt --all && prettier --write .",
+    "bench:step": "npm run build:wasm && node sim/bench/stepCost.ts"
   },
   "engines": {
     "node": ">=22"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/node": "^26.6.5",
     "eslint": "^10.13.0",
     "globals": "^17.13.0",
     "prettier": "^3.9.10",

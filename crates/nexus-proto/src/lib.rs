@@ -4,6 +4,7 @@
 //! WebAssembly and for host-side tools. Frame layouts are added in NX-05.
 
 #![no_std]
+#![forbid(unsafe_code)]
 
 /// Address of a node on the bus, assigned during discovery.
 ///
