@@ -19,15 +19,17 @@ mod dynamics;
 mod estimate;
 mod filters;
 mod gravity;
+mod impact;
 mod io;
 mod models;
 mod neighbours;
 mod reference;
 mod safety;
 mod sensors;
-mod vector;
+mod supervisor;
+pub mod vector;
 
-pub use actuator::{Actuator, Stages};
+pub use actuator::{Actuator, SafetyOutputs, Stages};
 pub use config::NodeConfig;
 pub use control::{Controller, JointController};
 pub use damping::{Damper, DampingContext, EnergyTank, LocalDamper, NetworkDamper, MAX_NEIGHBOUR_AGE};
@@ -38,6 +40,7 @@ pub use gravity::{
     ChainLoad, GravityCompensator, GravityOutput, GravitySource, LinkModel, PayloadEstimator, UpEstimator,
     MAX_CHAIN_AGE, STANDARD_GRAVITY,
 };
+pub use impact::{ImpactDetector, Watchdog};
 pub use io::{Frames, Inbox, Outbox};
 pub use models::{ModelChoice, ModelSet};
 pub use neighbours::{Neighbour, Neighbourhood, Side};
@@ -49,6 +52,7 @@ pub use reference::{
 };
 pub use safety::{SafetySupervisor, TorqueLimiter};
 pub use sensors::SensorFrame;
+pub use supervisor::{Directive, ImpactPolicy, Supervisor, SupervisorTiming};
 
 /// The node as currently assembled from the default stages.
 pub type DefaultActuator =

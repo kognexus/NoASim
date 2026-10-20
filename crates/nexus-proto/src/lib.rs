@@ -16,8 +16,8 @@ mod frames;
 
 pub use codec::{DecodeError, Reader, Writer};
 pub use frames::{
-    Announce, Assign, Chain, DampingMode, Destination, Frame, FrameKind, Goal, Header, Limits, NodeState,
-    Settings, StatusFlags, HEADER_LEN, MAX_FRAME_LEN,
+    Ack, Announce, Assign, Chain, DampingMode, Destination, Fault, FaultCode, Frame, FrameKind, Goal, Header,
+    Impact, Limits, NodeState, Settings, StatusFlags, HEADER_LEN, MAX_FRAME_LEN,
 };
 
 /// Address of a node on the bus, assigned during discovery.

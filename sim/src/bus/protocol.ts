@@ -15,6 +15,10 @@ export const FrameKind = {
   Assign: 5,
   Settings: 6,
   Chain: 7,
+  Impact: 8,
+  Heartbeat: 9,
+  Ack: 10,
+  Fault: 11,
 } as const;
 export type FrameKind = (typeof FrameKind)[keyof typeof FrameKind];
 
@@ -61,6 +65,8 @@ export interface NodeState {
   temperature: number;
   thermalHeadroom: number;
   tankEnergy: number;
+  /** Angular velocity of the far end of the sender's link, sender's housing frame. */
+  outerRate: Vec3f;
 }
 
 export interface Goal {
@@ -115,6 +121,38 @@ export interface Settings {
   model: number;
   /** Gravity feed-forward source: 0 = off, 1 = own IMU, 2 = encoders from a level base. */
   gravity: number;
+  /** Joints that must report an impact before the arm reacts (0 = disarmed, 1 = any). */
+  impactConfirm: number;
+}
+
+/** Impact policies (PLAN §2.1). */
+export const ImpactPolicy = {
+  retreatAndHold: 0,
+  eStop: 1,
+  float: 2,
+  /** Comparison only: hold stiffly where the impact was detected. */
+  stopInPlace: 3,
+} as const;
+
+export interface Impact {
+  /** Detection score relative to the threshold. */
+  score: number;
+  /** Bit 0 = IMU jolt, bit 1 = gear torque. */
+  evidence: number;
+}
+
+export const FaultCode = {
+  unknown: 0,
+  impact: 1,
+  configRejected: 2,
+  commLoss: 3,
+  source: 4,
+  limit: 5,
+} as const;
+
+export interface Fault {
+  code: number;
+  value: number;
 }
 
 /** Gravity chain data (B10); vectors in the sender's housing frame. */
@@ -135,16 +173,24 @@ export type Frame =
   | { header: Header & { kind: typeof FrameKind.Announce }; announce: Announce }
   | { header: Header & { kind: typeof FrameKind.Assign }; assign: Assign }
   | { header: Header & { kind: typeof FrameKind.Settings }; settings: Settings }
-  | { header: Header & { kind: typeof FrameKind.Chain }; chain: Chain };
+  | { header: Header & { kind: typeof FrameKind.Chain }; chain: Chain }
+  | { header: Header & { kind: typeof FrameKind.Impact }; impact: Impact }
+  | { header: Header & { kind: typeof FrameKind.Heartbeat }; heartbeat: true }
+  | { header: Header & { kind: typeof FrameKind.Ack }; ack: { code: number } }
+  | { header: Header & { kind: typeof FrameKind.Fault }; fault: Fault };
 
 const PAYLOAD_LEN: Record<FrameKind, number> = {
-  [FrameKind.State]: 4 + 17 * 4,
+  [FrameKind.State]: 4 + 20 * 4,
   [FrameKind.Goal]: 16,
   [FrameKind.Limits]: 24,
   [FrameKind.Announce]: 4 + 10 * 4,
   [FrameKind.Assign]: 4,
   [FrameKind.Settings]: 8,
   [FrameKind.Chain]: 13 * 4,
+  [FrameKind.Impact]: 8,
+  [FrameKind.Heartbeat]: 0,
+  [FrameKind.Ack]: 4,
+  [FrameKind.Fault]: 8,
 };
 
 /** Encoded length of a frame of `kind`, header included. */
@@ -231,6 +277,7 @@ export function encodeFrame(frame: Frame): Uint8Array {
       s.thermalHeadroom,
       s.tankEnergy,
     );
+    w.f32(...s.outerRate);
   } else if ("goal" in frame) {
     const g = frame.goal;
     w.u32(g.dueCycle);
@@ -260,8 +307,24 @@ export function encodeFrame(frame: Frame): Uint8Array {
     w.u8(st.impactPolicy);
     w.u8(st.model);
     w.u8(st.gravity);
+    w.u8(st.impactConfirm);
+    w.u16(0);
+  } else if ("impact" in frame) {
+    w.f32(frame.impact.score);
+    w.u8(frame.impact.evidence);
     w.u8(0);
     w.u16(0);
+  } else if ("heartbeat" in frame) {
+    // No payload.
+  } else if ("ack" in frame) {
+    w.u8(frame.ack.code);
+    w.u8(0);
+    w.u16(0);
+  } else if ("fault" in frame) {
+    w.u8(frame.fault.code);
+    w.u8(0);
+    w.u16(0);
+    w.f32(frame.fault.value);
   } else if ("chain" in frame) {
     const c = frame.chain;
     w.f32(
@@ -311,6 +374,7 @@ export function decodeFrame(bytes: Uint8Array): Frame {
         temperature: r.f32(),
         thermalHeadroom: r.f32(),
         tankEnergy: r.f32(),
+        outerRate: r.vec3(),
       };
       return { header: { kind, source, destination, cycle }, state };
     }
@@ -351,6 +415,7 @@ export function decodeFrame(bytes: Uint8Array): Frame {
         impactPolicy: r.u8(),
         model: r.u8(),
         gravity: r.u8(),
+        impactConfirm: r.u8(),
       };
       return { header: { kind, source, destination, cycle }, settings };
     }
@@ -365,6 +430,20 @@ export function decodeFrame(bytes: Uint8Array): Frame {
         holdingTorque: r.f32(),
       };
       return { header: { kind, source, destination, cycle }, chain };
+    }
+    case FrameKind.Impact: {
+      const impact = { score: r.f32(), evidence: r.u8() };
+      return { header: { kind, source, destination, cycle }, impact };
+    }
+    case FrameKind.Heartbeat:
+      return { header: { kind, source, destination, cycle }, heartbeat: true };
+    case FrameKind.Ack:
+      return { header: { kind, source, destination, cycle }, ack: { code: r.u8() } };
+    case FrameKind.Fault: {
+      const code = r.u8();
+      r.u8();
+      r.u16();
+      return { header: { kind, source, destination, cycle }, fault: { code, value: r.f32() } };
     }
     default: {
       const assign = { position: r.u8(), id: r.u8() };

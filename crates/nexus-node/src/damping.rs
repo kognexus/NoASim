@@ -26,6 +26,8 @@ pub struct DampingContext<'a> {
     pub neighbours: &'a Neighbourhood,
     /// Current bus cycle.
     pub now: u32,
+    /// Inertia beyond the joint about its axis, from the gravity chain, if known, kg·m².
+    pub outboard_inertia: Option<f32>,
 }
 
 /// Adds a damping torque.
@@ -159,52 +161,74 @@ mod tests {
 /// Oldest neighbour state the network term will use, in bus cycles (B5 stale-data rule).
 pub const MAX_NEIGHBOUR_AGE: u32 = 8;
 
-/// Local damping plus, in the network modes, damping of the joint's link-tip motion as
-/// measured by IMUs at both ends of the link (B1a).
+/// Local damping plus, in the network modes, damping of link-tip motion measured by IMUs
+/// further out along the chain (B1a).
 ///
 /// The outer neighbour's housing sits at the far end of this joint's link, so its gyro
-/// measures the rotation rate of the link tip. Subtracting this joint's own housing rate
-/// leaves the rate of the link tip relative to the housing, about the joint axis:
+/// measures the rotation rate of the link tip; the outer neighbour also relays the rate of
+/// the tip of *its* link. Relative to this joint's own housing, about the joint axis:
 ///
 /// ```text
-/// tip_rate = gyro(outer)·a − gyro(own)·a      (= joint rate + link bending rate)
+/// tip_rate   = gyro(outer)·a − gyro(own)·a          (joint rate + this link's bending)
+/// relay_rate = outer_rate(outer)·a − gyro(own)·a    (… + the next link's bending)
 /// ```
 ///
-/// Unlike an encoder rate it needs no differentiation, so it is clean at high bandwidth,
-/// and it includes the bending the joint encoder cannot see. The joint damps it
-/// (`τ = −c·tip_rate`, high-passed so commanded motion is left alone). If the neighbour's
-/// data is late or missing the term drops out and the joint falls back to local damping.
+/// Neither needs differentiation, so both are clean at high bandwidth, and they include
+/// the bending the joint encoder cannot see. The joint damps them (`τ = −c·signal`,
+/// high-passed so commanded motion is left alone). The gain follows the posture: it
+/// scales with the inertia beyond the joint (from the gravity chain) relative to the
+/// inertia the gains were sized for, so the joints best placed to move the vibrating mass
+/// take the largest share. If the neighbour's data is late or missing the term drops out
+/// and the joint falls back to local damping (B5).
 #[derive(Clone, Copy, Debug)]
 pub struct NetworkDamper {
     local: LocalDamper,
     axis: [f32; 3],
     gain: f32,
-    highpass: HighPass,
-    smoothing: LowPass2,
+    relay_weight: f32,
+    design_inertia: f32,
+    tip_filter: (HighPass, LowPass2),
+    relay_filter: (HighPass, LowPass2),
     tank: EnergyTank,
-    last_tip_rate: f32,
+    last_signal: f32,
 }
+
+/// Bounds of the posture scaling of the network gain.
+const POSTURE_SCALE: (f32, f32) = (0.25, 2.0);
 
 impl NetworkDamper {
     /// Damper for the joint described by `config`.
     #[must_use]
     pub fn new(config: &NodeConfig) -> Self {
         let dt = config.cycle_seconds();
+        let filters =
+            || (HighPass::new(config.damping_highpass_hz, dt), LowPass2::new(config.imu_lowpass_hz, dt));
         Self {
             local: LocalDamper::new(config),
             axis: config.axis,
             gain: config.network_damping,
-            highpass: HighPass::new(config.damping_highpass_hz, dt),
-            smoothing: LowPass2::new(config.imu_lowpass_hz, dt),
+            relay_weight: config.relay_weight,
+            design_inertia: config.design_inertia,
+            tip_filter: filters(),
+            relay_filter: filters(),
             tank: EnergyTank::new(TANK_CAPACITY, dt),
-            last_tip_rate: 0.0,
+            last_signal: 0.0,
         }
     }
 
-    /// Latest link-tip rate relative to the housing, rad/s (0 without a fresh neighbour).
+    /// Latest network damping signal, rad/s (0 without a fresh neighbour).
     #[must_use]
-    pub const fn tip_rate(&self) -> f32 {
-        self.last_tip_rate
+    pub const fn signal(&self) -> f32 {
+        self.last_signal
+    }
+
+    fn posture_scale(&self, outboard_inertia: Option<f32>) -> f32 {
+        match outboard_inertia {
+            Some(inertia) if self.design_inertia > 0.0 => {
+                (inertia / self.design_inertia).clamp(POSTURE_SCALE.0, POSTURE_SCALE.1)
+            }
+            _ => 1.0,
+        }
     }
 }
 
@@ -212,21 +236,24 @@ impl Damper for NetworkDamper {
     fn torque(&mut self, mode: DampingMode, e: &Estimate, context: &DampingContext) -> f32 {
         let local = if mode == DampingMode::Off { 0.0 } else { self.local.torque(mode, e, context) };
         let network_on = matches!(mode, DampingMode::Network | DampingMode::NetworkWithSource);
-        let tip = context
-            .neighbours
-            .get(Side::Outer)
-            .and_then(|n| n.fresh_state(context.now, MAX_NEIGHBOUR_AGE))
-            .map(|state| dot(state.gyro, self.axis));
-        let Some(tip_gyro) = tip else {
-            self.last_tip_rate = 0.0;
+        let outer =
+            context.neighbours.get(Side::Outer).and_then(|n| n.fresh_state(context.now, MAX_NEIGHBOUR_AGE));
+        let Some(outer) = outer else {
+            self.last_signal = 0.0;
             return local;
         };
-        let tip_rate = self.smoothing.update(self.highpass.update(tip_gyro - dot(e.gyro, self.axis)));
-        self.last_tip_rate = tip_rate;
+        let own = dot(e.gyro, self.axis);
+        let (hp, lp) = &mut self.tip_filter;
+        let tip = lp.update(hp.update(dot(outer.gyro, self.axis) - own));
+        let (hp, lp) = &mut self.relay_filter;
+        let relay = lp.update(hp.update(dot(outer.outer_rate, self.axis) - own));
+        let signal = tip + self.relay_weight * relay;
+        self.last_signal = signal;
         if !network_on {
             return local;
         }
-        local + self.tank.pass(-self.gain * tip_rate, e.output_velocity)
+        let gain = self.gain * self.posture_scale(context.outboard_inertia);
+        local + self.tank.pass(-gain * signal, e.output_velocity)
     }
 
     fn tank_energy(&self) -> f32 {

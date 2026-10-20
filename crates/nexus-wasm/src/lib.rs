@@ -41,6 +41,10 @@ pub struct Io {
     pub outbox_len: u32,
     /// Motor torque, output-referred N·m, written by the node.
     pub torque: f32,
+    /// 1 to engage the holding brake, written by the node.
+    pub brake: u32,
+    /// 1 to pull the hardwired safe-torque-off line, written by the node.
+    pub safe_torque_off: u32,
     /// Frames delivered by the bus: `[len: u16][frame]` records.
     pub inbox: [u8; INBOX_BYTES],
     /// Frames sent by the node, same record format.
@@ -48,7 +52,7 @@ pub struct Io {
 }
 
 /// Fields whose offsets [`nexus_layout`] reports, in this order.
-const LAYOUT: [usize; 13] = [
+const LAYOUT: [usize; 15] = [
     offset_of!(Io, config),
     offset_of!(Io, sensors),
     offset_of!(Io, cycle),
@@ -62,6 +66,8 @@ const LAYOUT: [usize; 13] = [
     size_of::<Io>(),
     size_of::<NodeConfig>(),
     size_of::<SensorFrame>(),
+    offset_of!(Io, brake),
+    offset_of!(Io, safe_torque_off),
 ];
 
 struct Instance {
@@ -93,6 +99,8 @@ static INSTANCE: Global = Global(UnsafeCell::new(Instance {
         inbox_len: 0,
         outbox_len: 0,
         torque: 0.0,
+        brake: 0,
+        safe_torque_off: 0,
         inbox: [0; INBOX_BYTES],
         outbox: [0; OUTBOX_BYTES],
     },
@@ -112,7 +120,8 @@ pub extern "C" fn nexus_io_ptr() -> *mut Io {
 
 /// Layout of the I/O block: offsets of config, sensors, cycle, `inbox_len`, `outbox_len`,
 /// torque, inbox, outbox (fields 0–7), then inbox and outbox capacity, total size, config
-/// size and sensor-frame size (8–12). Returns `u32::MAX` for an unknown field.
+/// size and sensor-frame size (8–12), then offsets of brake and safe-torque-off (13–14).
+/// Returns `u32::MAX` for an unknown field.
 #[unsafe(no_mangle)]
 pub extern "C" fn nexus_layout(field: u32) -> u32 {
     LAYOUT.get(field as usize).map_or(u32::MAX, |&v| u32::try_from(v).unwrap_or(u32::MAX))
@@ -135,6 +144,9 @@ pub extern "C" fn nexus_tick() {
     let mut outbox = Outbox::new(&mut io.outbox);
     io.torque = node.tick(io.cycle, &io.sensors, &Inbox::new(&io.inbox[..inbox_len]), &mut outbox);
     io.outbox_len = u32::try_from(outbox.len()).unwrap_or(0);
+    let outputs = node.safety_outputs();
+    io.brake = u32::from(outputs.brake);
+    io.safe_torque_off = u32::from(outputs.safe_torque_off);
 }
 
 #[cfg(target_arch = "wasm32")]

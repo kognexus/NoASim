@@ -34,7 +34,23 @@ export interface MjcfOptions {
    * actuator families, NX-04). Defaults to `false`: the datasheet friction is in the model.
    */
   readonly externalFriction?: boolean;
+  /** A spring-mounted block for impact tests; its spring doubles as a force gauge. */
+  readonly obstacle?: ObstacleSpec;
 }
+
+export interface ObstacleSpec {
+  /** Centre of the block at rest, world frame, m. */
+  readonly position: Vec3;
+  /** Half-sizes of the block, m. */
+  readonly halfSize: Vec3;
+  /** Direction the block can be pushed along (unit vector). */
+  readonly axis: Vec3;
+  /** Spring stiffness of the mount, N/m. */
+  readonly stiffness: number;
+}
+
+/** Names of the obstacle's elements. */
+export const OBSTACLE = { body: "obstacle", joint: "obstacle_slide" } as const;
 
 /** Height of joint 1 above the floor, m. */
 const BASE_HEIGHT = 0.05;
@@ -223,6 +239,25 @@ export function buildMjcf(spec: ArmSpec, options: MjcfOptions = {}): string {
     el("worldbody", {}, [
       el("light", { pos: "0 -1 3", dir: "0 0.3 -1", directional: "true" }),
       el("geom", { name: "floor", type: "plane", size: "3 3 0.05", ...ENV_CONTACT }),
+      ...(options.obstacle
+        ? [
+            el("body", { name: OBSTACLE.body, pos: vec(options.obstacle.position) }, [
+              el("joint", {
+                name: OBSTACLE.joint,
+                type: "slide",
+                axis: vec(options.obstacle.axis),
+                stiffness: options.obstacle.stiffness,
+                damping: 0.05 * Math.sqrt(options.obstacle.stiffness),
+              }),
+              el("geom", {
+                type: "box",
+                size: vec(options.obstacle.halfSize),
+                mass: 2,
+                ...ENV_CONTACT,
+              }),
+            ]),
+          ]
+        : []),
       el("body", { name: ARM_NAMES.base, pos: "0 0 0" }, [
         el("geom", {
           type: "cylinder",

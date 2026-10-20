@@ -37,6 +37,7 @@ const SAMPLES: Record<string, Frame> = {
       temperature: 41.5,
       thermalHeadroom: 0.875,
       tankEnergy: 0.5,
+      outerRate: [0.25, -0.5, 0.125],
     },
   },
   goal: {
@@ -71,8 +72,19 @@ const SAMPLES: Record<string, Frame> = {
   assign: { header: header(FrameKind.Assign, 0, 0xff), assign: { position: 4, id: 4 } },
   settings: {
     header: header(FrameKind.Settings, 0, 0xff),
-    settings: { damping: 2, interpolation: 1, impactPolicy: 2, model: 1, gravity: 1 },
+    settings: {
+      damping: 2,
+      interpolation: 1,
+      impactPolicy: 2,
+      model: 1,
+      gravity: 1,
+      impactConfirm: 2,
+    },
   },
+  impact: { header: header(FrameKind.Impact, 5, 0xff), impact: { score: 3.5, evidence: 3 } },
+  heartbeat: { header: header(FrameKind.Heartbeat, 0, 0xff), heartbeat: true },
+  ack: { header: header(FrameKind.Ack, 0, 0xff), ack: { code: 0 } },
+  fault: { header: header(FrameKind.Fault, 3, 0), fault: { code: 1, value: 2.5 } },
   chain: {
     header: header(FrameKind.Chain, 2, 0xfe),
     chain: {

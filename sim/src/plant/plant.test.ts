@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { structuralMode } from "../analysis/structuralMode.ts";
-import { KX6 } from "./kx6.ts";
+import { KX6, KX6L } from "./kx6.ts";
 import { loadMujoco, type Mujoco } from "./mujoco.ts";
 import { Plant } from "./plant.ts";
 
@@ -62,5 +62,14 @@ describe("KX-6 structural modes (NX-02 acceptance)", () => {
     expect(mode.frequencyHz).toBeLessThanOrEqual(15);
     expect(mode.dampingRatio).toBeGreaterThanOrEqual(0.01);
     expect(mode.dampingRatio).toBeLessThanOrEqual(0.03);
+  });
+});
+
+describe("KX-6L structural modes", () => {
+  it("has a low, lightly damped first mode (lightweight arm)", async () => {
+    const mode = structuralMode(await loadMujoco(), KX6L, { direction: [0, 0, 1] });
+    expect(mode.frequencyHz).toBeGreaterThan(4);
+    expect(mode.frequencyHz).toBeLessThan(8);
+    expect(mode.dampingRatio).toBeLessThan(0.02);
   });
 });

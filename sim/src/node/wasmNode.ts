@@ -33,6 +33,8 @@ interface IoLayout {
   outboxCapacity: number;
   configSize: number;
   sensorsSize: number;
+  brake: number;
+  safeTorqueOff: number;
 }
 
 /** Number of `f32` fields in the node's `SensorFrame`. */
@@ -54,7 +56,21 @@ function readLayout(exports: NexusExports): IoLayout {
     outboxCapacity: at(9),
     configSize: at(11),
     sensorsSize: at(12),
+    brake: base + at(13),
+    safeTorqueOff: base + at(14),
   };
+}
+
+/** What a node produces in one cycle. */
+export interface NodeOutput {
+  /** Motor torque, output-referred, N·m. */
+  readonly torque: number;
+  /** Mailbox records the node sent (a copy, safe to keep). */
+  readonly outbox: Uint8Array;
+  /** The node wants its holding brake engaged. */
+  readonly brake: boolean;
+  /** The node pulls the hardwired safe-torque-off line. */
+  readonly safeTorqueOff: boolean;
 }
 
 export class WasmNode {
@@ -104,14 +120,9 @@ export class WasmNode {
    * Runs one bus cycle.
    *
    * @param inbox mailbox records delivered by the bus this cycle
-   * @returns the motor torque (output-referred, N·m) and the mailbox records the node sent
-   *   (a copy, safe to keep)
+   * @returns torque, sent frames, and the brake and safe-torque-off outputs
    */
-  tick(
-    cycle: number,
-    sensors: SensorFrame,
-    inbox: Uint8Array,
-  ): { torque: number; outbox: Uint8Array } {
+  tick(cycle: number, sensors: SensorFrame, inbox: Uint8Array): NodeOutput {
     const { buffer } = this.#exports.memory;
     const layout = this.#layout;
     if (inbox.length > layout.inboxCapacity)
@@ -137,6 +148,8 @@ export class WasmNode {
     return {
       torque: after.getFloat32(layout.torque, true),
       outbox: new Uint8Array(this.#exports.memory.buffer, layout.outbox, outboxLen).slice(),
+      brake: after.getUint32(layout.brake, true) !== 0,
+      safeTorqueOff: after.getUint32(layout.safeTorqueOff, true) !== 0,
     };
   }
 }

@@ -44,6 +44,9 @@ export interface DiscoveryOptions {
   readonly watchdogCycles?: number;
 }
 
+/** Unanswered discovery frames are repeated after this many cycles. */
+const RETRY_CYCLES = 20;
+
 export class Discovery {
   readonly #options: DiscoveryOptions;
   readonly #events: DiscoveryEvents;
@@ -51,6 +54,7 @@ export class Discovery {
   #phase: DiscoveryPhase = "idle";
   #expected = 0;
   #readyCycle: number | undefined;
+  #lastSend = 0;
 
   constructor(options: DiscoveryOptions, events: DiscoveryEvents = {}) {
     this.#options = options;
@@ -76,9 +80,23 @@ export class Discovery {
     this.#phase = "announcing";
     this.#expected = reachable;
     this.#nodes.clear();
-    return Array.from({ length: reachable }, (_, k) => ({
-      header: { kind: FrameKind.Assign, source: Address.host, destination: Address.all, cycle },
-      assign: { position: k + 1, id: k + 1 },
+    this.#lastSend = cycle;
+    return this.#assignments(cycle);
+  }
+
+  #assignments(cycle: number): Frame[] {
+    return Array.from({ length: this.#expected }, (_, k) => k + 1)
+      .filter((position) => !this.#nodes.has(position))
+      .map((position) => ({
+        header: { kind: FrameKind.Assign, source: Address.host, destination: Address.all, cycle },
+        assign: { position, id: position },
+      }));
+  }
+
+  #limits(cycle: number, nodes: readonly DiscoveredNode[]): Frame[] {
+    return nodes.map((node) => ({
+      header: { kind: FrameKind.Limits, source: Address.host, destination: node.id, cycle },
+      limits: this.#options.limitsFor(node.announce),
     }));
   }
 
@@ -103,12 +121,20 @@ export class Discovery {
     }
     if (this.#phase === "announcing" && this.#nodes.size === this.#expected) {
       this.#phase = "configuring";
-      for (const node of this.nodes) {
-        out.push({
-          header: { kind: FrameKind.Limits, source: Address.host, destination: node.id, cycle },
-          limits: this.#options.limitsFor(node.announce),
-        });
-      }
+      this.#lastSend = cycle;
+      out.push(...this.#limits(cycle, this.nodes));
+    }
+    // Frames can be lost: repeat what has not been answered yet.
+    if (cycle - this.#lastSend >= RETRY_CYCLES) {
+      this.#lastSend = cycle;
+      if (this.#phase === "announcing") out.push(...this.#assignments(cycle));
+      if (this.#phase === "configuring")
+        out.push(
+          ...this.#limits(
+            cycle,
+            this.nodes.filter((n) => !n.ready),
+          ),
+        );
     }
     if (this.#phase === "configuring" && this.nodes.every((n) => n.ready)) {
       this.#phase = "ready";

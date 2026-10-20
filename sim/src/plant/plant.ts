@@ -8,7 +8,7 @@
 import type { MjData, MjModel } from "@mujoco/mujoco";
 import type { ArmSpec, Vec3 } from "./armSpec.ts";
 import type { ActuatorState } from "./drive.ts";
-import { buildMjcf, type MjcfOptions } from "./mjcf.ts";
+import { buildMjcf, type MjcfOptions, OBSTACLE } from "./mjcf.ts";
 import type { Mujoco } from "./mujoco.ts";
 import { ARM_NAMES, jointElementNames } from "./names.ts";
 
@@ -44,6 +44,8 @@ export class Plant {
   readonly #tcpPos: number;
   readonly #tcpVel: number;
   readonly #toolBody: number;
+  readonly #nominalFriction = new Map<number, number>();
+  readonly #obstacle: { qpos: number; stiffness: number } | undefined;
   #disposed = false;
 
   private constructor(mujoco: Mujoco, spec: ArmSpec, options: MjcfOptions) {
@@ -52,6 +54,9 @@ export class Plant {
     this.#model = mujoco.MjModel.from_xml_string(buildMjcf(spec, options));
     this.#data = new mujoco.MjData(this.#model);
     this.#joints = spec.joints.map((joint) => this.#addresses(joint.name, options));
+    this.#obstacle = options.obstacle
+      ? { qpos: this.#jointAdr(OBSTACLE.joint).qpos, stiffness: options.obstacle.stiffness }
+      : undefined;
     this.#tcpPos = this.#sensorAdr(ARM_NAMES.tcpPosSensor);
     this.#tcpVel = this.#sensorAdr(ARM_NAMES.tcpVelSensor);
     const last = spec.joints.at(-1);
@@ -207,6 +212,24 @@ export class Plant {
     const adr = this.#joint(i);
     const dof = adr.motorDof >= 0 ? adr.motorDof : adr.gearDof;
     return (this.#data.qfrc_bias as Float64Array)[dof] ?? 0;
+  }
+
+  /** Force on the obstacle's spring mount, N (0 without an obstacle). */
+  obstacleForce(): number {
+    if (!this.#obstacle) return 0;
+    return Math.abs(this.#obstacle.stiffness * this.#qpos(this.#obstacle.qpos));
+  }
+
+  /**
+   * Engages or releases joint `i`'s holding brake: a friction lock of `torque` N·m on the
+   * motor hinge, on top of the joint's own friction.
+   */
+  setBrake(i: number, engaged: boolean, torque: number): void {
+    const dof = this.#joint(i).motorDof;
+    if (dof < 0) return;
+    const friction = this.#model.dof_frictionloss as Float64Array;
+    this.#nominalFriction.set(i, this.#nominalFriction.get(i) ?? friction[dof] ?? 0);
+    friction[dof] = (this.#nominalFriction.get(i) ?? 0) + (engaged ? torque : 0);
   }
 
   /** Applies an external force (world frame, N) at the tool body's centre of mass until changed. */

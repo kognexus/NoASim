@@ -7,6 +7,12 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-11** Network damping on IMU-measured link-tip rates with a relayed second hop,
+  posture-aware gains, 15 Hz bandwidth limit, energy tank and stale-data fallback; the
+  lightweight KX-6L arm; a fair per-mode tuner and an H6 robustness sweep; ADR-0004
+  (stability argument). Tap settling, network vs off / local: 2.75× / 1.28× on KX-6L,
+  2.87× / 1.12× on KX-6 (H1 targets not met, see ticket). Discovery retries and periodic
+  settings make the bus robust to frame loss.
 - **NX-10** Joint-level interpolation: quintic segments to cycle-stamped goals, shared
   bus clock, smooth coast on missing goals, run-time switch from central setpoint
   following. Against central interpolation: jerk 3.0× / 5.0× / 1.4× lower and path error

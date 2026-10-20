@@ -161,3 +161,29 @@ export function withInitialAngles(spec: ArmSpec, angles: readonly number[]): Arm
     })),
   };
 }
+
+/**
+ * KX-6L: the same joints on lightweight, flexible links (thin carbon tubes): about 60 %
+ * of the link mass and a tenth of the bending stiffness. The first structural mode with
+ * the motors locked drops to about 6 Hz with about 1 % damping. This is the lightweight-arm
+ * case the network is meant for (ADR-0003); KX-6 is the stiff reference.
+ */
+export const KX6L: ArmSpec = {
+  ...KX6,
+  name: "KX-6L",
+  joints: KX6.joints.map((joint) => ({
+    ...joint,
+    link: {
+      ...joint.link,
+      mass: joint.link.mass * 0.6,
+      ...(joint.link.flex
+        ? {
+            flex: {
+              stiffness: joint.link.flex.stiffness * 0.1,
+              damping: joint.link.flex.damping * 0.1,
+            },
+          }
+        : {}),
+    },
+  })),
+};

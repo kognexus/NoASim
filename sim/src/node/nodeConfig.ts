@@ -29,6 +29,8 @@ export interface NodeConfig {
   observerHz: number;
   localDamping: number;
   networkDamping: number;
+  relayWeight: number;
+  designInertia: number;
   dampingHighpassHz: number;
   dampingLowpassHz: number;
   imuLowpassHz: number;
@@ -59,6 +61,8 @@ export function packNodeConfig(c: NodeConfig): number[] {
     c.observerHz,
     c.localDamping,
     c.networkDamping,
+    c.relayWeight,
+    c.designInertia,
     c.dampingHighpassHz,
     c.dampingLowpassHz,
     c.imuLowpassHz,

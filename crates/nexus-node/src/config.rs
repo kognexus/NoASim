@@ -52,6 +52,11 @@ pub struct NodeConfig {
     pub local_damping: f32,
     /// Gain of network (neighbour IMU) damping, N·m·s/rad.
     pub network_damping: f32,
+    /// Weight of the relayed rate one link further out in network damping, 0…1.
+    pub relay_weight: f32,
+    /// Load inertia the gains were sized for, kg·m² (network damping scales with the
+    /// current outboard inertia relative to this).
+    pub design_inertia: f32,
     /// High-pass corner of the damping signals, Hz: only vibration is damped, not motion.
     pub damping_highpass_hz: f32,
     /// Low-pass corner of the joint damping signal, Hz (second order).
@@ -114,6 +119,8 @@ impl NodeConfig {
             observer_hz: 150.0,
             local_damping: 40.0,
             network_damping: 40.0,
+            relay_weight: 0.5,
+            design_inertia: 2.3,
             damping_highpass_hz: 1.0,
             damping_lowpass_hz: 1000.0,
             imu_lowpass_hz: 40.0,

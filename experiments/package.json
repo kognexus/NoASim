@@ -1,0 +1,9 @@
+{
+  "name": "@kognexus/experiments",
+  "private": true,
+  "description": "Tuning and the proof runs (npm run prove).",
+  "type": "module",
+  "scripts": {
+    "tune": "node src/tune.ts"
+  }
+}

@@ -6,14 +6,15 @@
 //! `cargo test -p nexus-proto --test golden -- --ignored --nocapture print_golden`
 
 use nexus_proto::{
-    Announce, Assign, Chain, DampingMode, Destination, Frame, FrameKind, Goal, Header, Limits, NodeId,
-    NodeState, Settings, StatusFlags,
+    Ack, Announce, Assign, Chain, DampingMode, Destination, Fault, FaultCode, Frame, FrameKind, Goal, Header,
+    Impact, Limits, NodeId, NodeState, Settings, StatusFlags,
 };
 
 fn header(kind: FrameKind, source: u8, destination: Destination) -> Header {
     Header { kind, source: NodeId(source), destination, cycle: 123_456 }
 }
 
+#[allow(clippy::too_many_lines)] // one entry per frame kind
 fn samples() -> Vec<(&'static str, Frame)> {
     vec![
         (
@@ -35,6 +36,7 @@ fn samples() -> Vec<(&'static str, Frame)> {
                     temperature: 41.5,
                     thermal_headroom: 0.875,
                     tank_energy: 0.5,
+                    outer_rate: [0.25, -0.5, 0.125],
                 },
             ),
         ),
@@ -86,6 +88,7 @@ fn samples() -> Vec<(&'static str, Frame)> {
                     impact_policy: 2,
                     model: 1,
                     gravity: 1,
+                    impact_confirm: 2,
                 },
             ),
         ),
@@ -102,6 +105,22 @@ fn samples() -> Vec<(&'static str, Frame)> {
                     payload_lever: -4.5,
                     holding_torque: -31.25,
                 },
+            ),
+        ),
+        (
+            "impact",
+            Frame::Impact(
+                header(FrameKind::Impact, 5, Destination::All),
+                Impact { score: 3.5, evidence: Impact::IMU | Impact::TORQUE },
+            ),
+        ),
+        ("heartbeat", Frame::Heartbeat(header(FrameKind::Heartbeat, 0, Destination::All))),
+        ("ack", Frame::Ack(header(FrameKind::Ack, 0, Destination::All), Ack { code: 0 })),
+        (
+            "fault",
+            Frame::Fault(
+                header(FrameKind::Fault, 3, Destination::Host),
+                Fault { code: FaultCode::Impact, value: 2.5 },
             ),
         ),
         (

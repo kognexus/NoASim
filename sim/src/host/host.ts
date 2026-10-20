@@ -29,6 +29,9 @@ import {
 import type { Task } from "./tasks.ts";
 import { VlaEmulator, type VlaOptions } from "./vla.ts";
 
+/** The host re-sends its settings this often, in bus cycles (100 ms). */
+const SETTINGS_REPEAT_CYCLES = 400;
+
 /** How a task's policy steps reach the joints (H2). */
 export type InterpolationMode = "central" | "joint-level";
 
@@ -64,6 +67,12 @@ export class Host {
   readonly load: HostLoad = { ikSolves: 0, interpolationSteps: 0, goalFramesSent: 0 };
   /** Latest output angle reported by each node, by address. */
   readonly jointAngles = new Map<number, number>();
+  /** Every fault the nodes reported, in order. */
+  readonly faults: { cycle: number; node: number; code: number; value: number }[] = [];
+  /** Every impact the nodes reported, in order. */
+  readonly impacts: { cycle: number; node: number; score: number; evidence: number }[] = [];
+  /** Whether the host sends its cyclic frame (switch off to emulate a dead host). */
+  heartbeat = true;
   readonly #spec: ArmSpec;
   readonly #rng: Random;
   #motion: MotionController | undefined;
@@ -71,7 +80,14 @@ export class Host {
   lastReceived: Frame[] = [];
   /** Frames queued by the application (settings, goals), sent on the next tick. */
   readonly #queue: Frame[] = [];
-  #settings: Settings = { damping: 0, interpolation: 0, impactPolicy: 0, model: 0, gravity: 1 };
+  #settings: Settings = {
+    damping: 0,
+    interpolation: 0,
+    impactPolicy: 0,
+    model: 0,
+    gravity: 1,
+    impactConfirm: 0,
+  };
 
   constructor(spec: ArmSpec, rng: Random, options: HostOptions = {}) {
     this.#spec = spec;
@@ -149,6 +165,14 @@ export class Host {
     for (const f of this.lastReceived)
       if ("state" in f) this.jointAngles.set(f.header.source, f.state.outputAngle);
     const out = this.discovery.handle(this.lastReceived, cycle);
+    // Settings are re-sent periodically, as a mailbox would retry, so a lost frame does not
+    // leave a joint in the wrong mode.
+    if (cycle > 0 && cycle % SETTINGS_REPEAT_CYCLES === 0 && this.discovery.phase === "ready") {
+      out.push({
+        header: { kind: FrameKind.Settings, source: Address.host, destination: Address.all, cycle },
+        settings: this.#settings,
+      });
+    }
     if (this.#motion) out.push(...this.#motion.tick(cycle));
     for (const frame of this.#queue.splice(0))
       out.push({ ...frame, header: { ...frame.header, cycle } } as Frame);

@@ -27,6 +27,14 @@ pub enum FrameKind {
     Settings = 6,
     /// Gravity chain data a node shares with its neighbours (B10).
     Chain = 7,
+    /// A node felt an impact (B2).
+    Impact = 8,
+    /// The host's cyclic frame: proof of life for the comm-loss watchdog (B8).
+    Heartbeat = 9,
+    /// The host acknowledging a fault, releasing a holding arm.
+    Ack = 10,
+    /// A node reporting a fault to the host.
+    Fault = 11,
 }
 
 impl FrameKind {
@@ -39,6 +47,10 @@ impl FrameKind {
             5 => Self::Assign,
             6 => Self::Settings,
             7 => Self::Chain,
+            8 => Self::Impact,
+            9 => Self::Heartbeat,
+            10 => Self::Ack,
+            11 => Self::Fault,
             other => return Err(DecodeError::UnknownKind(other)),
         })
     }
@@ -54,6 +66,10 @@ impl FrameKind {
             Self::Assign => Assign::LEN,
             Self::Settings => Settings::LEN,
             Self::Chain => Chain::LEN,
+            Self::Impact => Impact::LEN,
+            Self::Heartbeat => 0,
+            Self::Ack => Ack::LEN,
+            Self::Fault => Fault::LEN,
         }
     }
 }
@@ -167,11 +183,15 @@ pub struct NodeState {
     pub thermal_headroom: f32,
     /// Energy left in the network-damping tank, J.
     pub tank_energy: f32,
+    /// Angular velocity of the far end of this node's link (its outer neighbour's gyro),
+    /// in this node's housing frame; zero without an outer neighbour. Relayed so that the
+    /// inner neighbour can see one link further out.
+    pub outer_rate: [f32; 3],
 }
 
 impl NodeState {
     /// Payload length in bytes.
-    pub const LEN: usize = 4 + 17 * 4;
+    pub const LEN: usize = 4 + 20 * 4;
 
     fn write(&self, w: &mut Writer) {
         w.u16(self.status.0);
@@ -193,6 +213,7 @@ impl NodeState {
         ] {
             w.f32(v);
         }
+        w.vec3(self.outer_rate);
     }
 
     fn read(r: &mut Reader) -> Result<Self, DecodeError> {
@@ -213,6 +234,7 @@ impl NodeState {
             temperature: r.f32()?,
             thermal_headroom: r.f32()?,
             tank_energy: r.f32()?,
+            outer_rate: r.vec3()?,
         })
     }
 }
@@ -414,6 +436,8 @@ pub struct Settings {
     pub model: u8,
     /// Gravity feed-forward source (0 = off, 1 = own IMU, 2 = encoders from a level base).
     pub gravity: u8,
+    /// Joints that must report an impact before the arm reacts (1 = any joint, B2).
+    pub impact_confirm: u8,
 }
 
 impl Settings {
@@ -426,7 +450,7 @@ impl Settings {
         w.u8(self.impact_policy);
         w.u8(self.model);
         w.u8(self.gravity);
-        w.u8(0);
+        w.u8(self.impact_confirm);
         w.u16(0);
     }
 
@@ -437,10 +461,127 @@ impl Settings {
             impact_policy: r.u8()?,
             model: r.u8()?,
             gravity: r.u8()?,
+            impact_confirm: r.u8()?,
         };
-        r.u8()?;
         r.u16()?;
         Ok(settings)
+    }
+}
+
+/// What a node felt when it reports an impact.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Impact {
+    /// Detection score relative to the threshold (1 = just at threshold).
+    pub score: f32,
+    /// Which evidence crossed its threshold: bit 0 = IMU jolt, bit 1 = gear torque.
+    pub evidence: u8,
+}
+
+impl Impact {
+    /// Payload length in bytes.
+    pub const LEN: usize = 8;
+    /// The accelerometer saw a jolt.
+    pub const IMU: u8 = 1;
+    /// The gear torque jumped.
+    pub const TORQUE: u8 = 2;
+
+    fn write(self, w: &mut Writer) {
+        w.f32(self.score);
+        w.u8(self.evidence);
+        w.u8(0);
+        w.u16(0);
+    }
+
+    fn read(r: &mut Reader) -> Result<Self, DecodeError> {
+        let impact = Self { score: r.f32()?, evidence: r.u8()? };
+        r.u8()?;
+        r.u16()?;
+        Ok(impact)
+    }
+}
+
+/// The host acknowledging a fault: the arm may accept goals again.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Ack {
+    /// Which fault is acknowledged (0 = all).
+    pub code: u8,
+}
+
+impl Ack {
+    /// Payload length in bytes.
+    pub const LEN: usize = 4;
+
+    fn write(self, w: &mut Writer) {
+        w.u8(self.code);
+        w.u8(0);
+        w.u16(0);
+    }
+
+    fn read(r: &mut Reader) -> Result<Self, DecodeError> {
+        let ack = Self { code: r.u8()? };
+        r.u8()?;
+        r.u16()?;
+        Ok(ack)
+    }
+}
+
+/// Why a node reports a fault.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
+pub enum FaultCode {
+    /// Not a known code.
+    #[default]
+    Unknown = 0,
+    /// The arm reacted to an impact and waits for the host (value: impact score).
+    Impact = 1,
+    /// A setting was refused (value: the refused impact policy), e.g. E-stop without brake.
+    ConfigRejected = 2,
+    /// The host fell silent (value: cycles since last heard).
+    CommLoss = 3,
+    /// A disturbance this joint causes could not be corrected (value: residual, NX-12).
+    Source = 4,
+    /// A limit was reached (value: which, NX-18).
+    Limit = 5,
+}
+
+impl FaultCode {
+    const fn from_byte(byte: u8) -> Self {
+        match byte {
+            1 => Self::Impact,
+            2 => Self::ConfigRejected,
+            3 => Self::CommLoss,
+            4 => Self::Source,
+            5 => Self::Limit,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+/// A fault report.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Fault {
+    /// What happened.
+    pub code: FaultCode,
+    /// A number that qualifies it (see [`FaultCode`]).
+    pub value: f32,
+}
+
+impl Fault {
+    /// Payload length in bytes.
+    pub const LEN: usize = 8;
+
+    fn write(self, w: &mut Writer) {
+        w.u8(self.code as u8);
+        w.u8(0);
+        w.u16(0);
+        w.f32(self.value);
+    }
+
+    fn read(r: &mut Reader) -> Result<Self, DecodeError> {
+        let code = FaultCode::from_byte(r.u8()?);
+        r.u8()?;
+        r.u16()?;
+        Ok(Self { code, value: r.f32()? })
     }
 }
 
@@ -510,6 +651,14 @@ pub enum Frame {
     Settings(Header, Settings),
     /// See [`Chain`].
     Chain(Header, Chain),
+    /// See [`Impact`].
+    Impact(Header, Impact),
+    /// The host's cyclic frame (no payload).
+    Heartbeat(Header),
+    /// See [`Ack`].
+    Ack(Header, Ack),
+    /// See [`Fault`].
+    Fault(Header, Fault),
 }
 
 impl Frame {
@@ -523,7 +672,11 @@ impl Frame {
             | Self::Announce(h, _)
             | Self::Assign(h, _)
             | Self::Settings(h, _)
-            | Self::Chain(h, _) => h,
+            | Self::Chain(h, _)
+            | Self::Impact(h, _)
+            | Self::Heartbeat(h)
+            | Self::Ack(h, _)
+            | Self::Fault(h, _) => h,
         }
     }
 
@@ -559,6 +712,10 @@ impl Frame {
             Self::Assign(_, p) => p.write(&mut w),
             Self::Settings(_, p) => p.write(&mut w),
             Self::Chain(_, p) => p.write(&mut w),
+            Self::Impact(_, p) => p.write(&mut w),
+            Self::Heartbeat(_) => {}
+            Self::Ack(_, p) => p.write(&mut w),
+            Self::Fault(_, p) => p.write(&mut w),
         }
         w.len()
     }
@@ -585,6 +742,10 @@ impl Frame {
             FrameKind::Assign => Self::Assign(header, Assign::read(&mut r)?),
             FrameKind::Settings => Self::Settings(header, Settings::read(&mut r)?),
             FrameKind::Chain => Self::Chain(header, Chain::read(&mut r)?),
+            FrameKind::Impact => Self::Impact(header, Impact::read(&mut r)?),
+            FrameKind::Heartbeat => Self::Heartbeat(header),
+            FrameKind::Ack => Self::Ack(header, Ack::read(&mut r)?),
+            FrameKind::Fault => Self::Fault(header, Fault::read(&mut r)?),
         })
     }
 }

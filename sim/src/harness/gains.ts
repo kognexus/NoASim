@@ -32,6 +32,8 @@ export interface ControlGains {
   readonly localDampingRatio: number;
   /** Damping ratio added by network damping. */
   readonly networkDampingRatio: number;
+  /** Weight of the relayed rate one link further out, 0…1. */
+  readonly relayWeight: number;
   /** High-pass corner of the damping signals, Hz. */
   readonly dampingHighpassHz: number;
   /** Low-pass corner of the joint damping signal, Hz (second order; ≥ 1 kHz = off). */
@@ -50,6 +52,7 @@ export const DEFAULT_GAINS: ControlGains = {
   observerHz: 150,
   localDampingRatio: 0.3,
   networkDampingRatio: 1,
+  relayWeight: 0.5,
   dampingHighpassHz: 1,
   dampingLowpassHz: 1000,
   imuLowpassHz: 1000,
@@ -91,6 +94,8 @@ export function nodeConfigFor(
     observerHz: gains.observerHz,
     localDamping: gains.localDampingRatio * dampingPerRatio,
     networkDamping: gains.networkDampingRatio * dampingPerRatio,
+    relayWeight: gains.relayWeight,
+    designInertia: loadInertia,
     dampingHighpassHz: gains.dampingHighpassHz,
     dampingLowpassHz: gains.dampingLowpassHz,
     imuLowpassHz: gains.imuLowpassHz,

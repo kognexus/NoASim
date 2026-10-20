@@ -202,7 +202,9 @@ impl PayloadEstimator {
     }
 }
 
-/// Oldest neighbour chain data used, in bus cycles.
+/// Neighbour chain data older than this counts as stale, in bus cycles. Stale data is still
+/// used (the load beyond a joint changes slowly, and holding with the last known load is far
+/// better than holding with none); it is only reported as stale.
 pub const MAX_CHAIN_AGE: u32 = 40;
 /// Correction time constant of the up estimator, s.
 const UP_FILTER_SECONDS: f32 = 0.02;
@@ -226,6 +228,7 @@ pub struct GravityCompensator {
     up: UpEstimator,
     payload: PayloadEstimator,
     smoothing: LowPass2,
+    outboard_inertia: Option<f32>,
 }
 
 impl GravityCompensator {
@@ -237,7 +240,15 @@ impl GravityCompensator {
             up: UpEstimator::new(UP_FILTER_SECONDS, config.cycle_seconds()),
             payload: PayloadEstimator::default(),
             smoothing: LowPass2::new(FEEDFORWARD_FILTER_HZ, config.cycle_seconds()),
+            outboard_inertia: None,
         }
+    }
+
+    /// Inertia of everything beyond the joint about its axis, from the chain (point-mass
+    /// estimate), kg·m²; `None` before the first chain sum.
+    #[must_use]
+    pub const fn outboard_inertia(&self) -> Option<f32> {
+        self.outboard_inertia
     }
 
     /// The up vector this node's IMU sees, housing frame (`None` before the first cycle).
@@ -252,12 +263,12 @@ impl GravityCompensator {
         source: GravitySource,
         e: &Estimate,
         neighbours: &Neighbourhood,
-        now: u32,
     ) -> GravityOutput {
         let angle = e.output_angle;
         let imu_up = self.up.update(e.gyro, e.accel);
-        let inner = neighbours.get(Side::Inner).and_then(|n| n.fresh_chain(now, MAX_CHAIN_AGE));
-        let outer = neighbours.get(Side::Outer).and_then(|n| n.fresh_chain(now, MAX_CHAIN_AGE));
+        // Last known chain data, fresh or not (see MAX_CHAIN_AGE).
+        let inner = neighbours.get(Side::Inner).and_then(|n| n.chain.as_ref());
+        let outer = neighbours.get(Side::Outer).and_then(|n| n.chain.as_ref());
 
         // Comparison model: "up" passed outward from a base assumed level.
         let level_up = inner.map_or([0.0, 0.0, STANDARD_GRAVITY], |c| c.up_link);
@@ -283,6 +294,9 @@ impl GravityCompensator {
             });
         let load = self.link.chain_in_link_frame(&outer_load);
         let hold = self.link.holding_torque(&load, up_link);
+        let along = dot(load.com, self.link.axis);
+        let perpendicular_sq = (dot(load.com, load.com) - along * along).max(0.0);
+        self.outboard_inertia = Some(load.mass * perpendicular_sq);
 
         // Payload: the torque the gear actually transmits, against the model without it.
         let lever = self.link.payload_lever(load.flange, up_link);

@@ -21,12 +21,16 @@ import { WasmNode } from "../node/wasmNode.ts";
 import type { ArmSpec } from "../plant/armSpec.ts";
 import { type ActuatorPhysics, IdealDrive } from "../plant/drive.ts";
 import { KX6 } from "../plant/kx6.ts";
+import type { ObstacleSpec } from "../plant/mjcf.ts";
 import type { Mujoco } from "../plant/mujoco.ts";
 import { Plant } from "../plant/plant.ts";
 import { emptySensorFrame, JointSensors, type SensorFrame } from "../sensors/jointSensors.ts";
 import { type ControlGains, DEFAULT_GAINS, nodeConfigsFor } from "./gains.ts";
 import { NEXUS_SENSORS, type NexusSensorSpec } from "../sensors/spec.ts";
 import { Random } from "../util/random.ts";
+
+/** Holding torque of a brake, per rated N·m of its joint. */
+const BRAKE_TORQUE_PER_RATED_NM = 2;
 
 export interface ArmSystemOptions {
   readonly spec?: ArmSpec;
@@ -47,6 +51,8 @@ export interface ArmSystemOptions {
   readonly actuationDelayCycles?: number;
   /** Physics steps per bus cycle (finer integration of stiff gear springs). Default 1. */
   readonly physicsSubsteps?: number;
+  /** A spring-mounted obstacle for impact tests. */
+  readonly obstacle?: ObstacleSpec;
   /** Adjusts the generated EEPROM contents per joint (experiments, tuning). */
   readonly configure?: (configs: NodeConfig[]) => NodeConfig[];
 }
@@ -64,6 +70,8 @@ export interface JointRuntime {
   commandTorque: number;
   /** Commands waiting to be applied (actuation delay). */
   readonly pending: number[];
+  /** The node asked for its brake. */
+  brake: boolean;
 }
 
 export class ArmSystem {
@@ -73,6 +81,11 @@ export class ArmSystem {
   readonly joints: readonly JointRuntime[];
   readonly #substeps: number;
   #cycle = 0;
+  /**
+   * The hardwired safe-torque-off line: once any node pulls it, every drive on the line is
+   * de-energised, whatever the bus does. It stays pulled until {@link resetSafeTorqueOff}.
+   */
+  safeTorqueOff = false;
 
   private constructor(
     plant: Plant,
@@ -104,6 +117,7 @@ export class ArmSystem {
     const plant = Plant.create(mujoco, spec, {
       timestep: 1 / (BUS_CYCLE_HZ * substeps),
       externalFriction: hidden,
+      ...(options.obstacle ? { obstacle: options.obstacle } : {}),
       ...(options.gravity === undefined ? {} : { gravity: options.gravity }),
     });
     const generated = nodeConfigsFor(spec, BUS_CYCLE_HZ, options.gains ?? DEFAULT_GAINS);
@@ -132,6 +146,7 @@ export class ArmSystem {
           current: 0,
           commandTorque: 0,
           pending: new Array<number>(delay).fill(0),
+          brake: false,
         };
       }),
     );
@@ -169,20 +184,31 @@ export class ArmSystem {
         j.frame,
       );
       const position = j.index + 1;
-      const { torque, outbox } = j.node.tick(cycle, j.frame, this.bus.receive(position, cycle));
-      this.bus.send(position, outbox, cycle);
-      j.pending.push(torque);
-      j.commandTorque = j.pending.shift() ?? torque;
+      const out = j.node.tick(cycle, j.frame, this.bus.receive(position, cycle));
+      this.bus.send(position, out.outbox, cycle);
+      j.pending.push(out.torque);
+      j.commandTorque = j.pending.shift() ?? out.torque;
+      j.brake = out.brake;
+      if (out.safeTorqueOff) this.safeTorqueOff = true;
     }
     this.bus.send(HOST_PORT, this.host.tick(cycle, this.bus.receive(HOST_PORT, cycle)), cycle);
     for (const j of this.joints) {
-      const out = j.physics.update(j.commandTorque, plant.actuatorState(j.index), dt);
+      const actuator = plant.spec.joints[j.index]?.actuator;
+      const command = this.safeTorqueOff ? 0 : j.commandTorque;
+      const out = j.physics.update(command, plant.actuatorState(j.index), dt);
       j.current = out.current;
-      plant.setMotorTorque(j.index, out.driveTorque);
+      plant.setMotorTorque(j.index, this.safeTorqueOff ? 0 : out.driveTorque);
       plant.setActuatorForces(j.index, out.frictionTorque, out.gearTorque);
+      if (actuator?.brake)
+        plant.setBrake(j.index, j.brake, BRAKE_TORQUE_PER_RATED_NM * actuator.ratedTorque);
     }
     for (let k = 0; k < this.#substeps; k++) plant.step();
     this.#cycle++;
+  }
+
+  /** Releases the safe-torque-off line (a deliberate reset after a stop). */
+  resetSafeTorqueOff(): void {
+    this.safeTorqueOff = false;
   }
 
   /** Advances `seconds` of simulated time. */
