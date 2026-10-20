@@ -49,3 +49,19 @@ node costs about 1 µs per joint per cycle.
 - The I/O block layout is duplicated in Rust (`Io`) and TypeScript (`IO_LAYOUT`). The
   harness checks the block size at instantiation. NX-05 replaces the block with proper
   bus frames and a shared layout description.
+
+## Update (NX-02)
+
+The spike benchmark read joint addresses as `qposadr[0]`, but the bindings return
+scalars, so its nodes saw zero sensors. The timing was still valid, because every node
+tick and plant step ran. From NX-02 on, the benchmark runs the real KX-6 plant through
+`Plant`, with each node holding its joint against gravity:
+
+| Arms | Node ticks | Node: steps/s | Node: × real time |
+|---|---|---|---|
+| 1 | no | 46,000 | 11.5× |
+| 1 | yes (6) | 48,800 | 12.2× |
+| 2 | no | 25,000 | 6.2× |
+| 2 | yes (12) | 24,100 | 6.0× |
+
+The decision stands.

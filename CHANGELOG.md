@@ -7,6 +7,11 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-02** `ArmSpec` → MJCF generator for any serial arm (QDD motor + gear-spring hinge per
+  joint, lumped link bending, IMU on the actuator housing), the KX-6 default arm, `Plant`
+  wrapper with named access to ground truth, impulse modal test. KX-6 first modes: 9.7 Hz
+  (ζ 1.6 %) vertical, 12.5 Hz (ζ 2.7 %) lateral. Benchmark now runs on KX-6 (6.0× real time
+  for two arms with nodes).
 - **NX-01** Spike: MuJoCo WASM steps the arm in Node and in the browser at about 5× real
   time for two arms with 12 node instances. `nexus-wasm` runs one node per WebAssembly
   instance over a C ABI; `WasmNode` loader with isolation tests; `npm run bench:step`;
