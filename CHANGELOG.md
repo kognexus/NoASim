@@ -7,6 +7,11 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-04** Hidden actuator families: composable physics effects (Stribeck and
+  position-dependent friction, cogging, current ripple, torque-constant drift, cubic
+  stiffening, Dahl hysteresis, backlash), five open families and one sealed family for the
+  out-of-family test (hash-pinned), `ActuatorPhysics` interface, architecture test that
+  keeps node code away from ground truth.
 - **NX-03** Sensor models of the Nexus unit (dual absolute encoders, Hall, 6-axis IMU,
   current, winding temperature), seeded random streams, motor electrical and thermal
   data in `ActuatorSpec`, ideal drive and two-node thermal model.

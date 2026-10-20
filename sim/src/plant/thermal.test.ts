@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { KX6 } from "./kx6.ts";
 import { ThermalModel } from "./thermal.ts";
-import { IdealDrive } from "./drive.ts";
+import { IdealDrive, type ActuatorState } from "./drive.ts";
+
+const REST: ActuatorState = { motorAngle: 0, motorVelocity: 0, gearTwist: 0, gearTwistRate: 0 };
 
 describe("ThermalModel", () => {
   it("settles at ambient + P·(R_wh + R_ha)", () => {
@@ -17,17 +19,17 @@ describe("IdealDrive", () => {
   it("delivers the commanded torque, clamped to peak, with current τ / (Kt·N)", () => {
     const actuator = KX6.joints[0]!.actuator;
     const drive = new IdealDrive(actuator);
-    const out = drive.update(10, 0, 0.00025);
-    expect(out.torque).toBe(10);
+    const out = drive.update(10, REST, 0.00025);
+    expect(out.driveTorque).toBe(10);
     expect(out.current).toBeCloseTo(10 / (0.316 * 9), 9);
-    expect(drive.update(1e6, 0, 0.00025).torque).toBe(actuator.peakTorque);
+    expect(drive.update(1e6, REST, 0.00025).driveTorque).toBe(actuator.peakTorque);
   });
 
   it.each(KX6.joints.map((joint) => [joint.name, joint.actuator] as const))(
     "keeps %s below its winding limit at rated torque, continuously",
     (_, actuator) => {
       const drive = new IdealDrive(actuator);
-      for (let t = 0; t < 4 * 3600; t += 0.05) drive.update(actuator.ratedTorque, 0, 0.05);
+      for (let t = 0; t < 4 * 3600; t += 0.05) drive.update(actuator.ratedTorque, REST, 0.05);
       expect(drive.windingTemperature).toBeGreaterThan(80);
       expect(drive.windingTemperature).toBeLessThan(
         actuator.electrical.thermal.maxWindingTemperature,

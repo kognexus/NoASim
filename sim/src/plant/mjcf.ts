@@ -29,6 +29,11 @@ export interface MjcfOptions {
    * the structure's modes independent of any controller. No actuators are generated.
    */
   readonly lockMotors?: boolean;
+  /**
+   * Leave friction off the motor hinges because the actuator physics applies it (hidden
+   * actuator families, NX-04). Defaults to `false`: the datasheet friction is in the model.
+   */
+  readonly externalFriction?: boolean;
 }
 
 /** Height of joint 1 above the floor, m. */
@@ -112,8 +117,8 @@ function jointChain(
           type: "hinge",
           axis: vec(joint.axis),
           armature: reflectedInertia(actuator),
-          damping: actuator.viscousFriction,
-          frictionloss: actuator.coulombFriction,
+          damping: options.externalFriction ? undefined : actuator.viscousFriction,
+          frictionloss: options.externalFriction ? undefined : actuator.coulombFriction,
         }),
         el("inertial", {
           pos: "0 0 0",

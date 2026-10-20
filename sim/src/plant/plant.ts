@@ -7,6 +7,7 @@
  */
 import type { MjData, MjModel } from "@mujoco/mujoco";
 import type { ArmSpec, Vec3 } from "./armSpec.ts";
+import type { ActuatorState } from "./drive.ts";
 import { buildMjcf, type MjcfOptions } from "./mjcf.ts";
 import type { Mujoco } from "./mujoco.ts";
 import { ARM_NAMES, jointElementNames } from "./names.ts";
@@ -100,6 +101,29 @@ export class Plant {
     const adr = this.#joint(i).actuator;
     if (adr < 0) throw new Error("motors are locked in this plant");
     (this.#data.ctrl as Float64Array)[adr] = torque;
+  }
+
+  /**
+   * Sets extra generalised forces on joint `i` until changed: `motor` on the motor hinge
+   * (friction from the actuator physics) and `gear` on the gear hinge (gear torque beyond
+   * the linear spring), N·m.
+   */
+  setActuatorForces(i: number, motor: number, gear: number): void {
+    const adr = this.#joint(i);
+    const qfrc = this.#data.qfrc_applied as Float64Array;
+    if (adr.motorDof >= 0) qfrc[adr.motorDof] = motor;
+    qfrc[adr.gearDof] = gear;
+  }
+
+  /** The mechanical state of joint `i`'s actuator. */
+  actuatorState(i: number): ActuatorState {
+    const adr = this.#joint(i);
+    return {
+      motorAngle: this.#qpos(adr.motorQpos),
+      motorVelocity: this.#qvel(adr.motorDof),
+      gearTwist: this.#qpos(adr.gearQpos),
+      gearTwistRate: this.#qvel(adr.gearDof),
+    };
   }
 
   /** Motor-side angle of joint `i` referred to the output, rad. */
