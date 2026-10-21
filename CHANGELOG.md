@@ -12,6 +12,9 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-21** README with quick start, what the results show and what they do not;
+  architecture, learned-model and limitations pages (`docs/architecture.md`,
+  `docs/phnn.md`, `docs/limitations.md`). Licence still to be chosen.
 - **NX-19** `npm run prove`: one module per group of hypotheses, each measured from fixed
   seeds and compared with its target in code, writing `docs/RESULTS.md` with SVG plots.
   Met: H3a–H3d, H4, H5, H6, H10b–H10d. Partly met: H2, H7, H9, H10a. Not met: H1 (2.0–2.5×

@@ -5,14 +5,14 @@
  */
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { StatusFlags } from "../../sim/src/bus/protocol.ts";
 import type { GeomInfo, Plant } from "../../sim/src/plant/plant.ts";
+import { type JointState, jointState } from "./status.ts";
 
 /** MuJoCo geom type codes (`mjtGeom`). */
 const GEOM = { plane: 0, sphere: 2, capsule: 3, cylinder: 5, box: 6 } as const;
 
-/** Disc colours by joint state (CSS custom properties hold the same values). */
-const JOINT_COLOURS = {
+/** Disc colours by joint state (the CSS custom properties of the page match them). */
+const JOINT_COLOURS: Record<JointState, number> = {
   ready: 0x3f8f6b,
   idle: 0x8a8f98,
   network: 0x2f6fd6,
@@ -20,19 +20,7 @@ const JOINT_COLOURS = {
   fault: 0xd64545,
   torqueOff: 0x222222,
   commissioning: 0x8a5cd6,
-} as const;
-
-function jointColour(status: number | undefined): number {
-  if (status === undefined) return JOINT_COLOURS.idle;
-  const has = (bit: number) => (status & bit) !== 0;
-  if (has(StatusFlags.torqueOff)) return JOINT_COLOURS.torqueOff;
-  if (has(StatusFlags.fault)) return JOINT_COLOURS.fault;
-  if (has(StatusFlags.holding) || has(StatusFlags.stopping)) return JOINT_COLOURS.holding;
-  if (has(StatusFlags.commissioning)) return JOINT_COLOURS.commissioning;
-  if (has(StatusFlags.networkDamping)) return JOINT_COLOURS.network;
-  if (has(StatusFlags.ready)) return JOINT_COLOURS.ready;
-  return JOINT_COLOURS.idle;
-}
+};
 
 function geomMesh(info: GeomInfo, material: THREE.Material): THREE.Object3D | undefined {
   const [a, b, c] = info.size;
@@ -168,7 +156,7 @@ export class ArmView {
       if (!disc) return;
       disc.position.set(...anchor.position);
       disc.quaternion.setFromUnitVectors(up, new THREE.Vector3(...anchor.axis));
-      disc.material.color.setHex(jointColour(status.get(j + 1)));
+      disc.material.color.setHex(JOINT_COLOURS[jointState(status.get(j + 1))]);
       disc.material.emissive.setHex(j === this.#selected ? 0x555555 : 0x000000);
       disc.scale.setScalar(j === this.#selected ? 1.25 : 1);
     });

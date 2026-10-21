@@ -3,9 +3,10 @@
  * frames per second by kind, and an event log (impacts, faults, disturbance claims).
  * Drawn as a line of nodes with pulses for the traffic of the last frame.
  */
-import { FaultCode, FrameKind, StatusFlags } from "../../sim/src/bus/protocol.ts";
+import { FaultCode, FrameKind } from "../../sim/src/bus/protocol.ts";
 import type { Host } from "../../sim/src/host/host.ts";
 import { BUS_CYCLE_HZ } from "../../sim/src/index.ts";
+import { type JointState, jointState } from "./status.ts";
 
 const FAULT_NAMES: Record<number, string> = {
   [FaultCode.impact]: "impact",
@@ -121,17 +122,16 @@ export class BusMonitor {
   }
 }
 
-/** Status colours, from the page's CSS custom properties. */
-function statusVar(status: number | undefined): string {
-  if (status === undefined) return "--idle";
-  const has = (bit: number) => (status & bit) !== 0;
-  if (has(StatusFlags.torqueOff)) return "--torque-off";
-  if (has(StatusFlags.fault)) return "--fault";
-  if (has(StatusFlags.holding) || has(StatusFlags.stopping)) return "--holding";
-  if (has(StatusFlags.networkDamping)) return "--network";
-  if (has(StatusFlags.ready)) return "--ready";
-  return "--idle";
-}
+/** Status colours: the page's CSS custom properties. */
+const STATUS_VARS: Record<JointState, string> = {
+  idle: "--idle",
+  ready: "--ready",
+  network: "--network",
+  commissioning: "--network",
+  holding: "--holding",
+  fault: "--fault",
+  torqueOff: "--torque-off",
+};
 
 /** Draws the host and the line of nodes, with pulses for non-cyclic frames. */
 export function drawBus(canvas: HTMLCanvasElement, monitor: BusMonitor, nodes: number): void {
@@ -170,7 +170,7 @@ export function drawBus(canvas: HTMLCanvasElement, monitor: BusMonitor, nodes: n
       g.fill();
       g.globalAlpha = 1;
     }
-    g.fillStyle = colour(i === 0 ? "--host" : statusVar(monitor.status.get(i)));
+    g.fillStyle = colour(i === 0 ? "--host" : STATUS_VARS[jointState(monitor.status.get(i))]);
     g.beginPath();
     g.arc(x(i), y, 12, 0, 2 * Math.PI);
     g.fill();
