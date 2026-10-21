@@ -1,0 +1,30 @@
+[project]
+name = "nexus-learning"
+version = "0.1.0"
+description = "Offline training of the per-joint port-Hamiltonian models (B11)"
+requires-python = ">=3.11"
+dependencies = ["numpy>=2.0", "torch>=2.4"]
+
+[project.scripts]
+nexus-train = "nexus_learning.train:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["ruff>=0.6", "pytest>=8.0"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "D"]
+ignore = ["D203", "D213", "D105", "D107", "D401"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D103"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

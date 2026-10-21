@@ -12,6 +12,13 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-14** `learning/` (uv, PyTorch): a port-Hamiltonian model of each joint, trained on
+  its own commissioning log. It has a cogging and a gear potential, friction and gear
+  damping that can only dissipate, and a torque-constant gain. Exported as versioned
+  JSON with probe values (`models/`). On held-out runs at another pose it beats the
+  fitted textbook model in every open family (gap to the Oracle closed: backlash 100 %,
+  stiffening gear 95 %, ripple 57 %, textbook 44 %, position-dependent friction 33 %).
+  The power balance holds to 10⁻¹⁴ (H10c).
 - **NX-13** Commissioning: on a `Commission` request a joint excites itself with a seeded
   multisine (0.2–6 Hz) inside its position and speed limits while the others hold.
   `experiments/src/commission.ts` writes per-joint train and held-out logs from what each

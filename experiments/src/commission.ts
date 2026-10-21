@@ -2,7 +2,8 @@
  * NX-13: commissioning datasets for the per-joint learned models (B11).
  *
  * For each arm seed, every joint of a KX-6 with hidden actuators runs its own excitation
- * twice: once for training, once (with another seed) held out for evaluation. Each run
+ * twice: once for training, once (with another seed, 0.25 rad away) held out for
+ * evaluation. Each run
  * is written as the joint's own log, plus a separate ground-truth file the training never
  * reads.
  *
@@ -12,7 +13,8 @@
  *   meta.json                what each node knows about itself (its EEPROM) and the format
  *   joint<n>-{train,heldout}.csv          the joint's log (LOG_COLUMNS)
  *   truth/joint<n>-{train,heldout}.csv    ground truth (TRUTH_COLUMNS)
- *   truth/families.json      which hidden family each joint was drawn from
+ *   truth/families.json      which hidden family each joint was drawn from, and the
+ *                            plant's gear damping
  *
  * `--sealed` draws only the sealed out-of-family actuator. It is for the final H10 run and
  * nothing else (see docs/tickets/NX-04.md).
@@ -27,6 +29,7 @@ import { KX6, KX6_HOME, withInitialAngles } from "../../sim/src/plant/kx6.ts";
 import {
   commissionJoint,
   LOG_COLUMNS,
+  moveJoint,
   toCsv,
   TRUTH_COLUMNS,
 } from "../../sim/src/scenarios/commissioning.ts";
@@ -34,6 +37,8 @@ import { openLab, withArm } from "./runner.ts";
 
 const TRAIN_SECONDS = 10;
 const HELDOUT_SECONDS = 5;
+/** The held-out run starts this far from the training run, rad. */
+const HELDOUT_SHIFT = 0.25;
 const SEALED_FAMILY = "sealed-lugre-eccentric";
 
 const sealed = process.argv.includes("--sealed");
@@ -58,12 +63,16 @@ for (let s = 0; s < armSeeds; s++) {
         ["train", TRAIN_SECONDS, 2 * j + 1],
         ["heldout", HELDOUT_SECONDS, 2 * j + 2],
       ] as const) {
+        // The held-out run is at another pose, so it tests what the model generalises,
+        // not what it memorised about one stretch of angle.
+        if (part === "heldout") moveJoint(system, j, HELDOUT_SHIFT);
         const run = commissionJoint(system, j, seconds, seed * 100 + runSeed);
         await writeFile(new URL(`joint${j + 1}-${part}.csv`, dir), toCsv(LOG_COLUMNS, run.log));
         await writeFile(
           new URL(`truth/joint${j + 1}-${part}.csv`, dir),
           toCsv(TRUTH_COLUMNS, run.truth),
         );
+        if (part === "heldout") moveJoint(system, j, -HELDOUT_SHIFT);
         system.run(0.5);
       }
     }
@@ -71,7 +80,16 @@ for (let s = 0; s < armSeeds; s++) {
   });
   await writeFile(
     new URL("truth/families.json", dir),
-    `${JSON.stringify({ families, sealed }, null, 2)}\n`,
+    `${JSON.stringify(
+      {
+        families,
+        sealed,
+        // The plant's gear damping, which no node is told; only the Oracle uses it.
+        gearDamping: spec.joints.map((j) => j.actuator.gearDamping),
+      },
+      null,
+      2,
+    )}\n`,
   );
   await writeFile(
     new URL("meta.json", dir),

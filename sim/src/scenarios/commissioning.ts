@@ -108,6 +108,24 @@ export function commissionJoint(
   return { joint, seed, log, truth };
 }
 
+/**
+ * Moves joint `joint` by `offset` rad over `seconds` with a smooth profile, the others
+ * holding, then lets it settle for half a second. Used to commission at another pose.
+ */
+export function moveJoint(system: ArmSystem, joint: number, offset: number, seconds = 1.5): void {
+  const start = system.joints.map(
+    (j) => system.host.jointAngles.get(j.index + 1) ?? system.plant.outputAngle(j.index),
+  );
+  system.host.startJointMotion((t) => {
+    const s = Math.min(1, t / seconds);
+    const blend = s * s * s * (10 - 15 * s + 6 * s * s);
+    return start.map((q, i) => (i === joint ? q + offset * blend : q));
+  }, system.cycle);
+  system.run(seconds + 0.1);
+  system.host.stopJointMotion();
+  system.run(0.5);
+}
+
 /** Formats rows as CSV with a header line. */
 export function toCsv(columns: readonly string[], rows: readonly number[][]): string {
   const lines = [columns.join(",")];
