@@ -51,6 +51,14 @@ What this repository shows and what it does not. Numbers are in [RESULTS.md](RES
   offline, for one arm and payload at one posture; with a 3 kg payload it was not made
   for, the stiff arm held the tool 0.6 mm off after a tap. A joint cannot design or
   check it itself.
+- **Coordinated models are learned for one arm and payload (NX-31).** The inertia rows
+  are fitted with the payload the arm was commissioned with (3 kg) and hold between the
+  ten commissioned postures; far outside them, or with another payload, they are wrong
+  (with too few postures they made pick and place worse). The sag compensation assumes a
+  link bends as if at mid-length, which the simulation's links do and a real tube need
+  not; its compliance is learned, its split is not. With coordinated damping (NX-30) as
+  well, classic pick and place tracks worse: that damper engages in the short pauses
+  between moves.
 - **Modes no joint reaches.** On the light arm, link bending at 55–69 Hz bends across
   every joint axis; no joint's torque or sensors reach it, so no damping in the joints,
   learned or not, can touch it. Only the structure's own damping does (NX-28).

@@ -25,11 +25,12 @@ reported as missed.
 | H10b | The learned model improves the arm | PHNN measurably better than RLS; reported against Oracle | slow-sweep deviation from the datasheet-actuator arm: learned 0.151, datasheet 0.189, RLS 1.682 mrad (mean of 3 units) | ✔ met |
 | H10c | The learned model is passive | Energy balance dH/dt ≤ input power on held-out trajectories; holds by construction, checked numerically | dissipation never negative (smallest 3.0e-11 W); balance closes to 1.4e-14 W on 24 joints | ✔ met |
 | H10d | A wrong model can't destabilise the arm | Closed loop with a deliberately corrupted or mismatched model: never unstable; the energy tank caps the network term | bounded in every case: yes; network term within its tank: yes | ✔ met |
-| Grades | Budget and premium actuators | Reported (NX-26): how each grade behaves, and what the network and the learned models change | network damping changes task vibration by −8 % (premium), +10 % (budget); learned models cut sweep deviation 1.95× (premium), 6.20× (budget) | · reported |
+| Grades | Budget and premium actuators | Reported (NX-26): how each grade behaves, and what the network and the learned models change | network damping changes task vibration by −8 % (premium), +11 % (budget); learned models cut sweep deviation 1.95× (premium), 6.20× (budget) | · reported |
 | Headroom | Headroom for learned damping | Reported (NX-27): how much better any damping could do after a tap | KX-6L: ideal 2.9× lower mean distance than network; KX-6: ideal 3.7× lower mean distance than network | · reported |
 | Reach | Modes no joint can reach | Reported (NX-28): for each mode below 80 Hz, how much damping any one joint can add | reached by no joint: KX-6L home 55 Hz, KX-6L reach 67 Hz | · reported |
 | Coordinated | Coordinated damping from joints two places away | Reported (NX-29): a gain designed for each joint seeing the joints up to two places away, on the true state and on what the bus carries | KX-6L: 3.3× closer than network on the true state; KX-6: 4.7× closer than network on the true state; from the bus alone, not yet robust | · reported |
 | Estimator | Estimator-based coordinated damping | Reported (NX-30): a Kalman filter on the joints' frames and a designed gain, in the joints, against network damping | in the joints, after a tap, mean distance against network damping: clean bus KX-6L 1.3–1.8×, KX-6 2.0–2.8×; lossy bus KX-6L 1.0×, KX-6 1.0× | · reported |
+| Neighbourhood | Coordinated models, learned from the neighbourhood | Reported (NX-31): each joint's learned share of its neighbourhood's dynamics (its inertia row and its link's sag), in the joints, against today's joints | coordinated model against today's joints, KX-6L: tracking 24 %/30 %/64 %/47 % lower, hold offset 2.21 → 0.45 mm, tap 0.72 → 0.73 mm; KX-6: tracking 16 %/19 %/50 %/28 % lower, hold offset 0.59 → 0.59 mm, tap 0.67 → 0.67 mm | · reported |
 
 ## H1: Networked damping settles vibration faster
 
@@ -259,17 +260,17 @@ Each unit is a KX-6 with hidden actuators and its committed models. The headline
 | Unit | Model | Sweep deviation, mrad | Figure of eight, mm | Pick and place, mm | Tap settling, s |
 |---|---|---|---|---|---|
 | kx6-s300 | reference (datasheet actuators) | 0.000 | 2.52 | 1.90 | 0.280 |
-| kx6-s300 | nominal | 0.170 | 2.55 | 1.93 | 0.292 |
+| kx6-s300 | nominal | 0.170 | 2.55 | 1.93 | 0.294 |
 | kx6-s300 | fitted | 0.355 | 2.51 | 1.93 | 0.294 |
 | kx6-s300 | learned | 0.168 | 2.50 | 1.93 | 0.291 |
 | kx6-s301 | reference (datasheet actuators) | 0.000 | 2.09 | 2.19 | 0.274 |
 | kx6-s301 | nominal | 0.180 | 2.13 | 2.23 | 0.252 |
 | kx6-s301 | fitted | 2.451 | 2.12 | 2.24 | 0.252 |
-| kx6-s301 | learned | 0.143 | 2.11 | 2.24 | 0.271 |
+| kx6-s301 | learned | 0.143 | 2.11 | 2.24 | 0.272 |
 | kx6-s302 | reference (datasheet actuators) | 0.000 | 2.13 | 3.21 | 0.276 |
-| kx6-s302 | nominal | 0.219 | 2.20 | 3.21 | 0.290 |
-| kx6-s302 | fitted | 2.239 | 2.17 | 3.27 | 0.291 |
-| kx6-s302 | learned | 0.141 | 2.17 | 3.23 | 0.322 |
+| kx6-s302 | nominal | 0.219 | 2.20 | 3.21 | 0.294 |
+| kx6-s302 | fitted | 2.239 | 2.17 | 3.27 | 0.289 |
+| kx6-s302 | learned | 0.141 | 2.17 | 3.23 | 0.321 |
 
 The H1 tap and H2 tasks barely change with any model: the stiff output-encoder servo already rejects most of what the actuators do differently. Where friction matters (slow motion), the learned feed-forward brings the arm closest to the reference; the online RLS fit chases what its structure cannot represent and can end worse than the datasheet.
 
@@ -293,16 +294,16 @@ Unit kx6-s300, every joint's learned model broken the same way:
 
 | Corruption | Sweep deviation, mrad | Figure of eight, mm | Tap settling | Rest motion after the tap, mm |
 |---|---|---|---|---|
-| friction x5 | 1.377 | 2.38 | 0.291 s | 0.012 |
-| cogging x-10 | 0.747 | 2.71 | 0.163 s | 0.012 |
-| noise on every weight | 10.195 | 8.12 | 0.473 s | 0.188 |
+| friction x5 | 1.377 | 2.38 | 0.291 s | 0.013 |
+| cogging x-10 | 0.747 | 2.71 | 0.162 s | 0.014 |
+| noise on every weight | 10.195 | 8.09 | 0.452 s | 0.167 |
 
 Never unstable, but not free: the feed-forward is in the loop through the measured motor angle, so cogging ten times too large and of the wrong sign acts like ten times the real cogging, and the tool chatters at rest. A wrong model degrades performance; the servo and the energy tank keep the arm bounded.
 
 ## Grades: Budget and premium actuators
 
 **Target:** Reported (NX-26): how each grade behaves, and what the network and the learned models change  
-**Measured:** network damping changes task vibration by −8 % (premium), +10 % (budget); learned models cut sweep deviation 1.95× (premium), 6.20× (budget)  
+**Measured:** network damping changes task vibration by −8 % (premium), +11 % (budget); learned models cut sweep deviation 1.95× (premium), 6.20× (budget)  
 **Verdict:** · reported
 
 KX-6. Ideal: datasheet actuators. Premium and budget: every joint drawn from the grade (`sim/src/actuators/grades.ts`); budget adds current-sensing offset (ripple once per electrical turn) and gain mismatch (twice per turn), strong cogging, stickier friction and gear play. Each grade's learned models were trained on its own commissioning run, like the open units.
@@ -313,9 +314,9 @@ KX-6. Ideal: datasheet actuators. Premium and budget: every joint drawn from the
 |---|---|---|---|---|
 | ideal, datasheet models | 0.515 s, 8.64 mm | 0.271 s, 7.37 mm | 2.60 mm, 7.55 °/s | 2.59 mm, 7.17 °/s |
 | premium, datasheet models | 0.506 s, 8.64 mm | 0.260 s, 7.38 mm | 2.42 mm, 8.10 °/s | 2.39 mm, 7.46 °/s |
-| premium, learned models | 0.506 s, 8.64 mm | 0.263 s, 7.38 mm | 2.43 mm, 8.08 °/s | 2.40 mm, 7.43 °/s |
-| budget, datasheet models | 0.453 s, 9.26 mm | 0.697 s, 6.58 mm | 25.08 mm, 21.32 °/s | 25.37 mm, 23.36 °/s |
-| budget, learned models | 0.394 s, 8.58 mm | 0.228 s, 7.03 mm | 5.37 mm, 20.16 °/s | 5.43 mm, 21.64 °/s |
+| premium, learned models | 0.506 s, 8.64 mm | 0.263 s, 7.38 mm | 2.43 mm, 8.08 °/s | 2.40 mm, 7.44 °/s |
+| budget, datasheet models | 0.453 s, 9.26 mm | 0.697 s, 6.58 mm | 25.19 mm, 21.15 °/s | 25.53 mm, 23.41 °/s |
+| budget, learned models | 0.394 s, 8.58 mm | 0.228 s, 7.03 mm | 5.41 mm, 20.51 °/s | 5.42 mm, 21.85 °/s |
 
 **Models** (network damping). Sweep: how far the joints stray from the ideal arm during slow sweeps (mrad RMS); tasks: tracking RMS; tap: settling time:
 
@@ -323,9 +324,9 @@ KX-6. Ideal: datasheet actuators. Premium and budget: every joint drawn from the
 |---|---|---|---|---|---|
 | ideal | datasheet | 0.000 | 1.86 mm | 1.62 mm | 0.279 s |
 | premium | datasheet | 0.130 | 2.58 mm | 2.38 mm | 0.270 s |
-| premium | learned | 0.066 | 2.58 mm | 2.38 mm | 0.275 s |
-| budget | datasheet | 29.580 | 25.67 mm | 25.15 mm | 0.505 s |
-| budget | learned | 4.770 | 4.94 mm | 4.50 mm | 0.226 s |
+| premium | learned | 0.066 | 2.58 mm | 2.38 mm | 0.276 s |
+| budget | datasheet | 29.580 | 25.55 mm | 25.13 mm | 0.257 s |
+| budget | learned | 4.770 | 4.94 mm | 4.49 mm | 0.207 s |
 
 **Report to source.** 10 blinded trials per grade and model (a random joint gets a gear-mesh ripple of 5–15 % of rated; right / wrong / missed), and a figure of eight with nothing injected (joints that claimed a disturbance of their own, source faults):
 
@@ -454,4 +455,42 @@ Taps as in NX-27 (two directions, unseen seeds) at three postures; the model and
 
 The model is the arm linearised where it holds, with dry friction as damping of the fast part of the motor speed only, the joints' position loops and the damper's command (40 Hz low-pass) each a cycle late. On the lossy bus the joints are no better than network damping: a joint's filter needs the latest frame of every joint within its reach, no more than 4 cycles old, with the commands of its own cycle; with one frame in five lost and 4 cycles of jitter it often has not, and falls back to network damping. The same estimator outside the joints, on the frames as the host receives them, keeps its advantage there; what the joints lack is a way to carry on through missing frames.
 
-<sub>Proof run took 43 min.</sub>
+## Neighbourhood: Coordinated models, learned from the neighbourhood
+
+**Target:** Reported (NX-31): each joint's learned share of its neighbourhood's dynamics (its inertia row and its link's sag), in the joints, against today's joints  
+**Measured:** coordinated model against today's joints, KX-6L: tracking 24 %/30 %/64 %/47 % lower, hold offset 2.21 → 0.45 mm, tap 0.72 → 0.73 mm; KX-6: tracking 16 %/19 %/50 %/28 % lower, hold offset 0.59 → 0.59 mm, tap 0.67 → 0.67 mm  
+**Verdict:** · reported
+
+Each joint learns, from neighbourhood commissioning (all joints excited at once on interleaved frequencies, at ten postures, two with the base and wrist turned), its row of the inertia of the joints up to two places away and its link's compliance; the compliance from the next joint's gyro, which sits at the link's far end. At run time it feeds forward the inertial torque of its own and its neighbours' published references, and shifts its angle by half its own link's predicted sag and half its inner neighbour's. The own-only model is the same fit with the joint's own angle and acceleration only. Network damping throughout, except in the last variant (NX-30's coordinated damping). Datasheet actuators, the arm's 3 kg payload, as commissioned.
+
+**Tracking** (tool path error RMS; vibration: mean over joints 2–6 and tasks):
+
+| Arm | Variant | VLA, figure of eight | VLA, pick and place | classic, figure of eight | classic, pick and place | Vibration |
+|---|---|---|---|---|---|---|
+| KX-6L | today's joints | 2.536 mm | 2.252 mm | 1.677 mm | 1.648 mm | 5.08 °/s |
+| KX-6L | own model only | 2.309 mm | 1.999 mm | 1.498 mm | 1.489 mm | 5.57 °/s |
+| KX-6L | coordinated model | 1.937 mm | 1.570 mm | 0.612 mm | 0.871 mm | 5.15 °/s |
+| KX-6L | coordinated model, no sag compensation | 2.239 mm | 2.000 mm | 1.413 mm | 1.483 mm | 5.15 °/s |
+| KX-6L | coordinated model and coordinated damping | 1.938 mm | 1.566 mm | 0.612 mm | 1.073 mm | 5.39 °/s |
+| KX-6 | today's joints | 2.232 mm | 1.858 mm | 0.977 mm | 0.992 mm | 4.91 °/s |
+| KX-6 | own model only | 1.923 mm | 1.510 mm | 0.579 mm | 0.705 mm | 5.42 °/s |
+| KX-6 | coordinated model | 1.885 mm | 1.506 mm | 0.489 mm | 0.711 mm | 4.96 °/s |
+| KX-6 | coordinated model, no sag compensation | 1.885 mm | 1.506 mm | 0.489 mm | 0.711 mm | 4.96 °/s |
+| KX-6 | coordinated model and coordinated damping | 1.885 mm | 1.505 mm | 0.489 mm | 1.012 mm | 5.06 °/s |
+
+**Holding and disturbances** (hold: tool offset from the commanded pose at home, reach and between; tap: mean distance over the first second, time to stay within 0.5 mm; shake: 15 N sideways near the first mode for 3 s, mean distance over 4 s and joint vibration; push: 150 N sideways for 0.4 s, peak and mean distance over 2 s):
+
+| Arm | Variant | Hold, home | Hold, reach | Hold, between | Tap | Shake | Push |
+|---|---|---|---|---|---|---|---|
+| KX-6L | today's joints | 1.491 mm | 2.841 mm | 2.306 mm | 0.719 mm, 0.172 s | 1.247 mm, 5.24 °/s | 179.7 mm, 29.21 mm |
+| KX-6L | own model only | 1.491 mm | 2.841 mm | 2.306 mm | 0.719 mm, 0.172 s | 1.247 mm, 5.24 °/s | 179.7 mm, 29.21 mm |
+| KX-6L | coordinated model | 0.280 mm | 0.387 mm | 0.691 mm | 0.729 mm, 0.174 s | 1.250 mm, 5.25 °/s | 183.1 mm, 29.72 mm |
+| KX-6L | coordinated model, no sag compensation | 1.491 mm | 2.841 mm | 2.306 mm | 0.719 mm, 0.172 s | 1.247 mm, 5.24 °/s | 179.7 mm, 29.21 mm |
+| KX-6L | coordinated model and coordinated damping | 0.277 mm | 0.377 mm | 0.562 mm | 0.404 mm, 0.111 s | 0.904 mm, 3.92 °/s | 162.4 mm, 25.73 mm |
+| KX-6 | today's joints | 0.345 mm | 0.397 mm | 1.022 mm | 0.669 mm, 0.190 s | 0.532 mm, 3.34 °/s | 165.1 mm, 27.07 mm |
+| KX-6 | own model only | 0.345 mm | 0.397 mm | 1.022 mm | 0.669 mm, 0.190 s | 0.532 mm, 3.34 °/s | 165.1 mm, 27.07 mm |
+| KX-6 | coordinated model | 0.345 mm | 0.397 mm | 1.022 mm | 0.669 mm, 0.190 s | 0.532 mm, 3.34 °/s | 165.1 mm, 27.07 mm |
+| KX-6 | coordinated model, no sag compensation | 0.345 mm | 0.397 mm | 1.022 mm | 0.669 mm, 0.190 s | 0.532 mm, 3.34 °/s | 165.1 mm, 27.07 mm |
+| KX-6 | coordinated model and coordinated damping | 0.335 mm | 0.391 mm | 0.939 mm | 0.240 mm, 0.069 s | 0.350 mm, 2.34 °/s | 143.1 mm, 23.07 mm |
+
+<sub>Proof run took 44 min.</sub>

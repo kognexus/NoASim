@@ -6,7 +6,7 @@
 <line x1='64' x2='704' y1='162' y2='162' stroke='#e4e7eb'/><text x='56' y='166' font-size='11' text-anchor='end' fill='#5d6673'>500</text>
 <line x1='64' x2='704' y1='109' y2='109' stroke='#e4e7eb'/><text x='56' y='113' font-size='11' text-anchor='end' fill='#5d6673'>750</text>
 <line x1='64' x2='704' y1='56' y2='56' stroke='#e4e7eb'/><text x='56' y='60' font-size='11' text-anchor='end' fill='#5d6673'>1000</text>
-<rect x='134.7' y='160.7' width='33.0' height='107.3' rx='2' fill='#2f6fd6'/><rect x='170.7' y='215.0' width='33.0' height='53.0' rx='2' fill='#d9822b'/><text x='170.7' y='286' font-size='11' text-anchor='middle' fill='#1c2129'>figure of eight</text>
+<rect x='134.7' y='160.7' width='33.0' height='107.3' rx='2' fill='#2f6fd6'/><rect x='170.7' y='215.1' width='33.0' height='52.9' rx='2' fill='#d9822b'/><text x='170.7' y='286' font-size='11' text-anchor='middle' fill='#1c2129'>figure of eight</text>
 <rect x='348.0' y='147.9' width='33.0' height='120.1' rx='2' fill='#2f6fd6'/><rect x='384.0' y='224.1' width='33.0' height='43.9' rx='2' fill='#d9822b'/><text x='384.0' y='286' font-size='11' text-anchor='middle' fill='#1c2129'>pick and place</text>
 <rect x='561.3' y='127.4' width='33.0' height='140.6' rx='2' fill='#2f6fd6'/><rect x='597.3' y='128.6' width='33.0' height='139.4' rx='2' fill='#d9822b'/><text x='597.3' y='286' font-size='11' text-anchor='middle' fill='#1c2129'>fast reach</text>
 <text x='14' y='46' font-size='12' fill='#5d6673'>m/s³</text>

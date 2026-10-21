@@ -37,7 +37,7 @@ export async function neighbourhood(ctx: ProveContext): Promise<Finding> {
     );
     const hold = (s: typeof today) => Object.values(s.hold).reduce((a, b) => a + b, 0) / 3;
     summary.push(
-      `${arm}: tracking ${gain.join("/")} lower, hold offset ${hold(today).toFixed(2)} → ${hold(coordinated).toFixed(2)} mm, tap ${pct(coordinated.tap.meanMm, today.tap.meanMm)} lower`,
+      `${arm}: tracking ${gain.join("/")} lower, hold offset ${hold(today).toFixed(2)} → ${hold(coordinated).toFixed(2)} mm, tap ${today.tap.meanMm.toFixed(2)} → ${coordinated.tap.meanMm.toFixed(2)} mm`,
     );
   }
   return {
@@ -48,7 +48,7 @@ export async function neighbourhood(ctx: ProveContext): Promise<Finding> {
     measured: `coordinated model against today's joints, ${summary.join("; ")}`,
     verdict: "reported",
     detail: [
-      "Each joint learns, from neighbourhood commissioning (all joints excited at once on interleaved frequencies, at three postures), its row of the inertia of the joints up to two places away and its link's compliance; the compliance from the next joint's gyro, which sits at the link's far end. At run time it feeds forward the inertial torque of its own and its neighbours' published references, and shifts its angle by half its own link's predicted sag and half its inner neighbour's. The own-only model is the same fit with the joint's own angle and acceleration only. Network damping throughout, except in the last variant (NX-30's coordinated damping). Datasheet actuators, the arm's 3 kg payload, as commissioned.",
+      "Each joint learns, from neighbourhood commissioning (all joints excited at once on interleaved frequencies, at ten postures, two with the base and wrist turned), its row of the inertia of the joints up to two places away and its link's compliance; the compliance from the next joint's gyro, which sits at the link's far end. At run time it feeds forward the inertial torque of its own and its neighbours' published references, and shifts its angle by half its own link's predicted sag and half its inner neighbour's. The own-only model is the same fit with the joint's own angle and acceleration only. Network damping throughout, except in the last variant (NX-30's coordinated damping). Datasheet actuators, the arm's 3 kg payload, as commissioned.",
       "",
       `**Tracking** (tool path error RMS; vibration: mean over joints 2–6 and tasks):`,
       "",

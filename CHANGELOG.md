@@ -37,6 +37,14 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-31** Coordinated models: each joint learns its row of its neighbourhood's inertia
+  and its link's compliance (from the next joint's gyro) from neighbourhood
+  commissioning, every joint excited at once. In the joints, as feed-forward, they cut
+  the light arm's tracking error 24–64 % and its tool offset while holding 3–7× (link
+  sag no joint sees alone); on the stiff arm 16–50 %, mostly each joint's own inertia.
+  They do not change settling: NX-30's coordinated damping does, and the two combine.
+  Joints now publish their commanded reference and their link's predicted bend; tasks
+  start from the references.
 - **NX-30** Coordinated damping in the joints (`Coordinated (while holding)` in the demo):
   each joint runs a Kalman filter on the state frames of the joints up to two places
   away and a gain designed on a model of the arm checked against the simulation. A tap
