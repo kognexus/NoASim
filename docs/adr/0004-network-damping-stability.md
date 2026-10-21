@@ -88,6 +88,34 @@ NX-28 also measured whether a neighbour damper is worth adding: at most a few pe
 a tap, and the arm rings when it is strong (RESULTS.md, "Headroom"). Being passive is not
 the same as damping well.
 
+## A frame-aligned Laplacian law, tested (NX-32)
+
+A colleague's derivation (`lyapunov_qdd.pdf`) argues that damping each joint on the
+relative rate between its IMU and each neighbour's, the neighbour's gyro resolved in the
+joint's frame through the encoders and high-passed, `τ_i = −Σ_j D_ij a_iᵀ HPF(ω_i − R_ij ω_j)`,
+gives `V̇ = −q̇ᵀD q̇ − Δωᵀ L Δω ≤ 0` unconditionally. The step that does not hold is
+`q̇ᵀ τ = −Δωᵀ L Δω`: a joint's torque does work only on its own coordinate, while the
+relative rate across its link is `q̇_i + ḃ_i` (outer side) or the inner joint's rate and
+bend (inner side), so the power has cross terms of no fixed sign. Resolving the gyros in
+the joint's frame is right (`outer_rate` does it) but does not change this.
+
+Run as written outside the joints, with true gyros and encoder angles, no tank, a tap at
+home (`experiments/src/frame-aligned.ts`; gain as a multiple of the network-damping gain;
+with the joints' IMU low-pass, which the note lacks, so that no gear mode is involved):
+
+| Law | Both arms, 0.25–0.5× | 1× (our tuned gain) | 8× |
+|---|---|---|---|
+| As written (both neighbours) | puts 20–121 mJ in per tap; settles no better than the joints alone | unstable, with or without delay | unstable |
+| Every term flipped (both neighbours) | puts 0–26 mJ in; settles worse than the joints alone | puts 40–75 mJ in | unstable |
+| Flipped, outer neighbour only | takes 40–100 mJ out; settles faster | takes 100–150 mJ out, never puts any in | puts energy in on both arms; light arm unstable with 4 cycles of delay |
+
+As written, the outer term pushes each joint along its own speed (`+D(q̇_i + ḃ_i)`), and
+it destabilises the arm from our tuned gain on, with no delay at all. With the sign of a
+damper, the inner-neighbour term still pumps energy in. The outer term alone, which is
+the shape of our network damping, takes energy out at every gain up to 4×, but not
+unconditionally: at 8× and with delay it puts energy in. Without the IMU low-pass even the
+outer term destabilises the light arm at 1× (rotor–gear modes). The energy tank stays.
+
 ## Consequences
 
 - H6 is measured as: (a) the damping work at every joint never exceeds `E_max`, and

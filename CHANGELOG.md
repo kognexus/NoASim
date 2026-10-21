@@ -41,6 +41,10 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-32** A colleague's frame-aligned Laplacian damping law run as written, without a
+  tank: it puts energy into the arm at every gain and destabilises it from our tuned
+  gain on, with no delay. Its outer-neighbour term alone, with a damper's sign, takes
+  energy out up to four times our gain, not beyond. ADR-0004 updated; the tank stays.
 - **NX-31** Coordinated models: each joint learns its row of its neighbourhood's inertia
   and its link's compliance (from the next joint's gyro) from neighbourhood
   commissioning, every joint excited at once. In the joints, as feed-forward, they cut
