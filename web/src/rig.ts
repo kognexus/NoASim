@@ -3,7 +3,10 @@
  * both arms the same disturbances at the same bus cycle, so the only difference between
  * them is what the user switched (damping mode, model, …).
  */
+import { DisturbedActuator } from "../../sim/src/actuators/disturbed.ts";
 import { cogging, type ActuatorEffect } from "../../sim/src/actuators/effects.ts";
+import type { DrawOptions } from "../../sim/src/actuators/families.ts";
+import { HiddenActuator } from "../../sim/src/actuators/hiddenActuator.ts";
 import type { BusOptions } from "../../sim/src/bus/ethercatBus.ts";
 import { DampingMode, ImpactPolicy } from "../../sim/src/bus/protocol.ts";
 import { ArmSystem } from "../../sim/src/harness/armSystem.ts";
@@ -70,6 +73,13 @@ export const DEFAULT_SHARED: SharedSettings = {
 /** Seed of a unit name such as `kx6-s300`. */
 const unitSeed = (unit: string) => Number(unit.split("-s").pop());
 
+/** The sealed actuator family (`sim/src/actuators/sealed.ts`), opened for the final H10 run. */
+const SEALED_FAMILY = "sealed-lugre-eccentric";
+
+/** How a unit's actuators are drawn: the sealed unit from the sealed family only. */
+const actuatorDraw = (unit: string): DrawOptions =>
+  unit.includes("sealed") ? { families: [SEALED_FAMILY], includeSealed: true } : {};
+
 /** Both damping laws as tuned, so the mode can be switched live by the settings byte. */
 function demoGains(arm: ArmName): ControlGains {
   const local = tunedGains(arm, "local");
@@ -119,6 +129,7 @@ export class ArmRig {
   };
   #rest: Vec3;
   #computer: RobotComputer = "vla";
+  readonly #ripples = new Map<number, RippleKind>();
 
   private constructor(system: ArmSystem, spec: ArmSpec) {
     this.system = system;
@@ -141,7 +152,7 @@ export class ArmRig {
       seed: hidden ? unitSeed(shared.unit) : 1,
       gains: demoGains(shared.arm),
       bus,
-      ...(hidden ? { actuators: {}, ...(models ? { models } : {}) } : {}),
+      ...(hidden ? { actuators: actuatorDraw(shared.unit), ...(models ? { models } : {}) } : {}),
     });
     system.run(2);
     system.host.applySettings({
@@ -236,13 +247,37 @@ export class ArmRig {
     });
   }
 
-  /** Gives joint `joint` an actuator fault from now on. */
-  inject(joint: number, effect: ActuatorEffect): void {
-    this.system.injectDisturbance(joint, effect);
+  /** Gives joint `joint` a torque ripple of `kind` from now on, or removes it (undefined). */
+  setRipple(joint: number, kind: RippleKind | undefined): void {
+    this.system.clearDisturbance(joint);
+    if (kind) {
+      this.system.injectDisturbance(joint, rippleEffect(this.spec, joint, kind));
+      this.#ripples.set(joint, kind);
+    } else {
+      this.#ripples.delete(joint);
+    }
   }
 
-  clearFaults(): void {
+  /** The ripple each joint has, by joint index (0-based). */
+  get ripples(): ReadonlyMap<number, RippleKind> {
+    return this.#ripples;
+  }
+
+  /** Removes every ripple. */
+  clearRipples(): void {
     this.system.clearDisturbances();
+    this.#ripples.clear();
+  }
+
+  /** What each joint's actuator is like, in plain words. */
+  actuatorDescriptions(): string[] {
+    return this.system.joints.map((j) => {
+      let physics = j.physics;
+      while (physics instanceof DisturbedActuator) physics = physics.inner;
+      return physics instanceof HiddenActuator
+        ? (ACTUATOR_DESCRIPTIONS[physics.family] ?? physics.family)
+        : "as specified";
+    });
   }
 
   /** Pulls the safe-torque-off line (E-STOP). */
@@ -259,16 +294,25 @@ export class ArmRig {
   }
 }
 
+/** A fixable (10 % of rated) or unfixable (50 %, beyond the joint's budget) torque ripple. */
+export type RippleKind = "fixable" | "unfixable";
+
+/** Hidden actuator families in plain words (`sim/src/actuators/families.ts`). */
+const ACTUATOR_DESCRIPTIONS: Record<string, string> = {
+  textbook: "plain friction, light cogging and ripple",
+  "stribeck-position": "sticky friction that varies with angle",
+  "ripple-thermal": "strong cogging and ripple, weaker when hot",
+  "hysteretic-stiffening": "gear that stiffens with load, with hysteresis",
+  backlash: "gear with play (backlash)",
+  [SEALED_FAMILY]: "sticky friction with memory, eccentric gear",
+};
+
 /**
  * Torque ripple the demo can inject into a joint, at the sixth electrical harmonic (where
  * it is felt even at slow speeds): 10 % of rated torque, which the joint can cancel, or
  * 50 %, beyond its compensation budget (the joint reports that it cannot).
  */
-export function faultEffect(
-  spec: ArmSpec,
-  joint: number,
-  kind: "fixable" | "unfixable",
-): ActuatorEffect {
+export function rippleEffect(spec: ArmSpec, joint: number, kind: RippleKind): ActuatorEffect {
   const j = spec.joints[joint];
   if (!j) throw new RangeError(`joint ${joint} out of range`);
   const share = kind === "fixable" ? 0.1 : 0.5;

@@ -178,7 +178,7 @@
             <span
               class="help"
               tabindex="0"
-              data-tip="Gives the selected joint's actuator a torque ripple at the sixth electrical harmonic, on both arms. Torque ripple (10 % of rated) can be cancelled: with 'Network + report to source' the joint names itself and cancels it. Severe ripple (50 %) is beyond what the joint may cancel: it reports a fault about 2 s after naming itself. Ripple only shows while the joint turns, so run a task."
+              data-tip="Gives the selected joint's actuator a torque ripple at the sixth electrical harmonic, on both arms; click the same button again to remove it. Fixable ripple (10 % of rated) can be cancelled: with 'Network + report to source' the joint names itself and cancels it. Unfixable ripple (50 %) is beyond what the joint may cancel: it reports a fault about 2 s after naming itself. Ripple only shows while the joint turns, so run a task. The line below, and a ≈ in the bus views, show which joints have a ripple."
               >?</span
             >
           </legend>
@@ -192,7 +192,8 @@
           >
             Severe ripple
           </button>
-          <button id="clear" title="Removes every injected ripple">Clear faults</button>
+          <button id="clear" title="Removes the ripple from every joint">Remove all ripple</button>
+          <p class="ripple-state" id="ripple-state" aria-live="polite">No ripple applied.</p>
         </fieldset>
         <fieldset>
           <legend>
@@ -247,21 +248,21 @@
             <span
               class="help"
               tabindex="0"
-              data-tip="Body: the lightweight KX-6L has flexible links that ring at about 6 Hz; the KX-6 is stiffer. Actuators: as on the datasheet, or a unit whose actuators nobody described, with each joint's learned model (KX-6 only). Payload at the tool, link bending stiffness and brakes: changing any of these rebuilds both arms."
+              data-tip="Links: light and flexible (the arm rings at about 6 Hz), or stiff (about 10 Hz). Actuators: ideal, exactly as specified; or one of three imperfect sets, where each joint's actuator has its own friction, cogging, ripple or gear behaviour that nobody told the joint about, and each joint has learned a model of its own (stiff links only). Payload at the tool, link bending stiffness and brakes: changing any of these rebuilds both arms."
               >?</span
             >
           </legend>
           <label
-            >Body
+            >Links
             <select id="arm">
-              <option value="kx6l">KX-6L lightweight</option>
-              <option value="kx6">KX-6 stiff</option>
+              <option value="kx6l">Light, flexible links (rings at ~6 Hz)</option>
+              <option value="kx6">Stiff links (rings at ~10 Hz)</option>
             </select>
           </label>
           <label
             >Actuators
             <select id="unit">
-              <option value="datasheet">As on the datasheet</option>
+              <option value="datasheet">Ideal, as specified</option>
             </select>
           </label>
           <label
@@ -273,6 +274,7 @@
             <input id="stiffness" type="range" min="25" max="200" step="25" value="100"
           /></label>
           <label class="check"><input id="brakes" type="checkbox" /> Brakes</label>
+          <p class="detail" id="actuator-detail"></p>
         </fieldset>
       </section>
     </main>

@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { FaultCode } from "../../sim/src/bus/protocol.ts";
 import { loadMujoco, type Mujoco } from "../../sim/src/plant/mujoco.ts";
 import { loadNodeModule } from "../../sim/src/testing/fixtures.ts";
-import { ArmRig, BUS_CYCLE_HZ, DampingMode, DEFAULT_SHARED, faultEffect, TwinRig } from "./rig.ts";
+import { ArmRig, BUS_CYCLE_HZ, DampingMode, DEFAULT_SHARED, TwinRig } from "./rig.ts";
 
 describe("the demo's twin arms (NX-20)", () => {
   let mujoco: Mujoco;
@@ -26,6 +26,21 @@ describe("the demo's twin arms (NX-20)", () => {
     twin = new TwinRig(left!, right!);
     return twin;
   }
+
+  it("builds the out-of-family test set from the sealed family and names it plainly", async () => {
+    const arm = await ArmRig.create(
+      mujoco,
+      nodeModule,
+      { ...DEFAULT_SHARED, arm: "kx6", unit: "kx6-sealed-s900" },
+      { damping: DampingMode.off, model: 0 },
+      undefined,
+      { latencyCycles: 1 },
+    );
+    expect(new Set(arm.actuatorDescriptions())).toEqual(
+      new Set(["sticky friction with memory, eccentric gear"]),
+    );
+    arm.dispose();
+  });
 
   it("taps both arms at the same cycle; the networked arm moves less", async () => {
     const t = await twinArms();
@@ -52,7 +67,7 @@ describe("the demo's twin arms (NX-20)", () => {
     const t = await twinArms();
     t.both((arm) => arm.apply({ damping: DampingMode.networkWithSource, model: 0 }));
     t.both((arm) => arm.startTask("eight"));
-    t.both((arm) => arm.inject(2, faultEffect(arm.spec, 2, "fixable")));
+    t.both((arm) => arm.setRipple(2, "fixable"));
     t.run(4 * BUS_CYCLE_HZ);
     for (const arm of t.arms) {
       const claimants = new Set(

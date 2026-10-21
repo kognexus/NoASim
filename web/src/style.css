@@ -467,3 +467,11 @@ table.rates td {
   border-radius: 50%;
   border: 1px solid var(--border);
 }
+
+.ripple-state,
+.detail {
+  flex: 1 1 100%;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}

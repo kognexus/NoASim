@@ -24,7 +24,8 @@ All notable changes, one entry per ticket. The format follows
 
 - **NX-24** Demo for comparison: both 3D views share one camera; each arm's tool-distance
   and per-joint vibration charts sit under its view, on scales shared between the arms;
-  "?" tooltips on every control.
+  "?" tooltips on every control. Ripple buttons toggle, with a line and a bus-view mark
+  showing which joints have ripple; plain names for links and actuators.
 - **NX-22** A classic real-time controller as a second kind of robot computer. It runs
   the task as a program and streams setpoints at 1–4 kHz; the same joints follow it
   unchanged. Policy computer and classic controller switch task by task, and the

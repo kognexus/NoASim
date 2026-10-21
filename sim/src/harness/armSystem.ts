@@ -230,6 +230,13 @@ export class ArmSystem {
     joint.physics = new DisturbedActuator(joint.physics, effect);
   }
 
+  /** Removes the disturbances injected into joint `index`. */
+  clearDisturbance(index: number): void {
+    const joint = this.joints[index];
+    if (!joint) throw new RangeError(`joint ${index} out of range`);
+    while (joint.physics instanceof DisturbedActuator) joint.physics = joint.physics.inner;
+  }
+
   /** Removes every injected disturbance. */
   clearDisturbances(): void {
     for (const joint of this.joints) {

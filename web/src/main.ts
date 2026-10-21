@@ -14,9 +14,9 @@ import {
   BUS_CYCLE_HZ,
   DampingMode,
   DEFAULT_SHARED,
-  faultEffect,
   type SharedSettings,
   type SideSettings,
+  type RippleKind,
   type RobotComputer,
   type TaskName,
   TwinRig,
@@ -128,6 +128,8 @@ async function build(): Promise<void> {
     }
   });
   for (const chart of [distanceChart, ...vibrationCharts]) chart.clear();
+  updateJointPanel();
+  showActuatorDetail();
   busy.hidden = true;
 }
 
@@ -136,7 +138,46 @@ function selectJoint(joint: number): void {
   if (joint >= 0) showVibrationOf(joint);
   for (const view of views) view.select(joint);
   $("#joint-label").textContent = joint >= 0 ? `J${joint + 1}` : "click a joint";
-  for (const id of ["#ripple", "#damaged"]) $<HTMLButtonElement>(id).disabled = joint < 0;
+  updateJointPanel();
+}
+
+/** Ripple buttons and the ripple line: what the selected joint and the arm have now. */
+function updateJointPanel(): void {
+  const ripples = twin?.arms[0].ripples ?? new Map<number, RippleKind>();
+  const current = selected >= 0 ? ripples.get(selected) : undefined;
+  for (const [id, kind, name] of [
+    ["#ripple", "fixable", "fixable ripple"],
+    ["#damaged", "unfixable", "unfixable ripple"],
+  ] as const) {
+    const button = $<HTMLButtonElement>(id);
+    button.disabled = selected < 0;
+    button.setAttribute("aria-pressed", String(current === kind));
+    button.textContent = current === kind ? `Remove ${name}` : `Add ${name}`;
+  }
+  $("#ripple-state").textContent =
+    ripples.size === 0
+      ? "No ripple applied."
+      : `Ripple on: ${[...ripples]
+          .sort(([a], [b]) => a - b)
+          .map(([j, kind]) => `J${j + 1} (${kind})`)
+          .join(", ")}`;
+}
+
+/** Adds `kind` of ripple to the selected joint, or removes it if it is already there. */
+function toggleRipple(kind: RippleKind): void {
+  if (!twin || selected < 0) return;
+  const next = twin.arms[0].ripples.get(selected) === kind ? undefined : kind;
+  twin.both((arm) => arm.setRipple(selected, next));
+  updateJointPanel();
+}
+
+/** What each joint's actuator is like, under the actuator selector. */
+function showActuatorDetail(): void {
+  const descriptions = twin?.arms[0].actuatorDescriptions() ?? [];
+  $("#actuator-detail").textContent =
+    shared.unit === "datasheet"
+      ? "Every joint's actuator is exactly as specified."
+      : descriptions.map((d, j) => `J${j + 1}: ${d}`).join("; ");
 }
 
 // ---- controls ---------------------------------------------------------------------------
@@ -178,7 +219,10 @@ armEls.forEach((el, i) => {
 });
 
 for (const unit of UNITS) {
-  $<HTMLSelectElement>("#unit").add(new Option(`Unit ${unit}: hidden, learned`, unit));
+  const sealed = unit.includes("sealed");
+  const set = UNITS.filter((u) => !u.includes("sealed")).indexOf(unit) + 1;
+  const name = sealed ? "Out-of-family test set" : `Imperfect set ${set}`;
+  $<HTMLSelectElement>("#unit").add(new Option(`${name}, with learned models (stiff links)`, unit));
 }
 
 labelChart();
@@ -214,13 +258,12 @@ $("#push").addEventListener("click", () => {
   setReaction(true);
   twin?.both((arm) => arm.push(sideways));
 });
-$("#ripple").addEventListener("click", () =>
-  twin?.both((arm) => arm.inject(selected, faultEffect(arm.spec, selected, "fixable"))),
-);
-$("#damaged").addEventListener("click", () =>
-  twin?.both((arm) => arm.inject(selected, faultEffect(arm.spec, selected, "unfixable"))),
-);
-$("#clear").addEventListener("click", () => twin?.both((arm) => arm.clearFaults()));
+$("#ripple").addEventListener("click", () => toggleRipple("fixable"));
+$("#damaged").addEventListener("click", () => toggleRipple("unfixable"));
+$("#clear").addEventListener("click", () => {
+  twin?.both((arm) => arm.clearRipples());
+  updateJointPanel();
+});
 $("#ack").addEventListener("click", () => twin?.both((arm) => arm.acknowledge()));
 $("#estop").addEventListener("click", () => twin?.both((arm) => arm.emergencyStop()));
 $("#reset").addEventListener("click", () => void build());
@@ -364,7 +407,8 @@ function frame(now: number): void {
     monitors.forEach((monitor, i) => {
       const el = armEls[i];
       if (!el) return;
-      drawBus($(".bus", el), monitor, JOINT_COUNT, selected);
+      const rippled = new Set(twin?.arms[i]?.ripples.keys() ?? []);
+      drawBus($(".bus", el), monitor, JOINT_COUNT, selected, rippled);
       if (now - rateWindow.shown > 500) showBusText(monitor, el);
     });
     if (now - rateWindow.shown > 500) {

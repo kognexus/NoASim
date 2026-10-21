@@ -135,14 +135,15 @@ export function busJointAt(canvas: HTMLCanvasElement, clientX: number, nodes: nu
 }
 
 /**
- * Draws the host and the line of nodes, with pulses for non-cyclic frames and a ring on
- * the selected joint (0-based, −1 for none).
+ * Draws the host and the line of nodes, with pulses for non-cyclic frames, a ring on the
+ * selected joint (0-based, −1 for none) and a "≈" over joints that have a ripple.
  */
 export function drawBus(
   canvas: HTMLCanvasElement,
   monitor: BusMonitor,
   nodes: number,
   selected = -1,
+  rippled: ReadonlySet<number> = new Set(),
 ): void {
   const ratio = Math.min(2, window.devicePixelRatio);
   const w = canvas.clientWidth;
@@ -196,6 +197,12 @@ export function drawBus(
     }
     g.fillStyle = colour("--muted");
     g.fillText(i === 0 ? "host" : `J${i}`, x(i), y + 28);
+    if (i > 0 && rippled.has(i - 1)) {
+      g.fillStyle = colour("--status-holding");
+      g.font = "bold 14px system-ui, sans-serif";
+      g.fillText("≈", x(i), y - 22);
+      g.font = "11px system-ui, sans-serif";
+    }
   }
 }
 
