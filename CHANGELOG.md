@@ -12,6 +12,13 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-20** Interactive demo (`npm run dev -w web`): two arms side by side, drawn from
+  their MuJoCo models with three.js, the same disturbances at the same cycle. Damping
+  mode and model per arm, switched live. Tasks; tap, shake and collide; a click on a joint
+  injects fixable or unfixable torque ripple. Impact policy, reaction switch, ACK,
+  E-STOP and reset. Bus latency, jitter and loss applied live. Arm body, payload, link
+  stiffness, brakes, and committed units with learned models. A tool-distance chart and
+  a bus view with an event log.
 - **NX-15** The learned model in the node: no_std inference with analytic gradients, loaded
   as a versioned word block (checked against the trainer's probe values). It is used
   for friction and cogging feed-forward and for the source self-test's residual, never

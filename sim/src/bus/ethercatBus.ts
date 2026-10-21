@@ -50,10 +50,10 @@ const DATAGRAM_OVERHEAD = 12;
 export class EthercatBus {
   readonly nodeCount: number;
   readonly #rng: Random;
-  readonly #latency: number;
-  readonly #jitter: number;
-  readonly #dropRate: number;
-  readonly #budget: number;
+  #latency = 1;
+  #jitter = 0;
+  #dropRate = 0;
+  #budget = 3125;
   readonly #pending: Pending[] = [];
   /** Last scheduled delivery per (from, to) link, so jitter never reorders a link. */
   readonly #lastDue = new Map<number, number>();
@@ -73,6 +73,11 @@ export class EthercatBus {
   constructor(nodeCount: number, rng: Random, options: BusOptions = {}) {
     this.nodeCount = nodeCount;
     this.#rng = rng;
+    this.configure(options);
+  }
+
+  /** Sets the wire's conditions; frames already in flight keep their delivery time. */
+  configure(options: BusOptions): void {
     this.#latency = Math.max(1, options.latencyCycles ?? 1);
     this.#jitter = Math.max(0, options.jitterCycles ?? 0);
     this.#dropRate = options.dropRate ?? 0;

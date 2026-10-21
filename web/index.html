@@ -3,11 +3,154 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Nexus step cost</title>
+    <title>Nexus twin arms</title>
+    <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <h1>Nexus step cost (NX-01 spike)</h1>
-    <pre id="out">Running…</pre>
+    <header class="top">
+      <div>
+        <h1>Nexus: networked actuators</h1>
+        <p class="lede">
+          Two identical arms, the same disturbances at the same instant. Every joint is its own
+          WebAssembly node that sees only its sensors and the bus.
+        </p>
+      </div>
+      <div class="clock" aria-live="polite">
+        <span id="sim-time">0.0 s</span>
+        <span id="rtf" title="Simulated time per real second">–</span>
+      </div>
+    </header>
+
+    <main>
+      <section class="arms">
+        <article class="arm" data-side="0">
+          <div class="arm-bar">
+            <span class="swatch" style="background: var(--left)"></span>
+            <select class="mode" aria-label="Left arm damping mode"></select>
+            <select class="model" aria-label="Left arm model"></select>
+            <output class="dev" title="Tool distance from where it should be">– mm</output>
+          </div>
+          <canvas class="view"></canvas>
+        </article>
+        <article class="arm" data-side="1">
+          <div class="arm-bar">
+            <span class="swatch" style="background: var(--right)"></span>
+            <select class="mode" aria-label="Right arm damping mode"></select>
+            <select class="model" aria-label="Right arm model"></select>
+            <output class="dev" title="Tool distance from where it should be">– mm</output>
+          </div>
+          <canvas class="view"></canvas>
+        </article>
+        <div id="busy" class="busy" hidden>Building the arms…</div>
+      </section>
+
+      <section class="panel" aria-label="Controls">
+        <fieldset>
+          <legend>Task</legend>
+          <div class="seg" id="task">
+            <button data-task="hold" aria-pressed="true">Hold</button>
+            <button data-task="pick">Pick &amp; place</button>
+            <button data-task="eight">Figure eight</button>
+          </div>
+        </fieldset>
+        <fieldset>
+          <legend>Disturb both arms</legend>
+          <button id="tap">Tap the tool</button>
+          <button id="shake">Shake 3 s</button>
+          <button id="push" title="Turns on the reaction to impacts">Collide (push 0.4 s)</button>
+        </fieldset>
+        <fieldset>
+          <legend>Selected joint: <span id="joint-label">click a joint</span></legend>
+          <button id="ripple" disabled title="10 % of rated torque: the joint can cancel it">
+            Torque ripple
+          </button>
+          <button
+            id="damaged"
+            disabled
+            title="50 % of rated torque: beyond what the joint may cancel"
+          >
+            Severe ripple
+          </button>
+          <button id="clear">Clear faults</button>
+        </fieldset>
+        <fieldset>
+          <legend>Safety</legend>
+          <label
+            >On impact
+            <select id="policy">
+              <option value="0">Retreat and hold</option>
+              <option value="1">E-stop with brakes</option>
+              <option value="2">Float</option>
+              <option value="3">Stop in place</option>
+            </select>
+          </label>
+          <label class="check"><input id="react" type="checkbox" /> React to impacts</label>
+          <button id="ack">ACK</button>
+          <button id="estop" class="danger">E-STOP</button>
+          <button id="reset">Reset</button>
+        </fieldset>
+        <fieldset>
+          <legend>Bus</legend>
+          <label
+            >Latency <output id="latency-out">1</output>
+            <input id="latency" type="range" min="1" max="20" value="1"
+          /></label>
+          <label
+            >Jitter <output id="jitter-out">0</output>
+            <input id="jitter" type="range" min="0" max="10" value="0"
+          /></label>
+          <label
+            >Lost frames <output id="drop-out">0 %</output>
+            <input id="drop" type="range" min="0" max="30" value="0"
+          /></label>
+        </fieldset>
+        <fieldset>
+          <legend>Arm (rebuilds)</legend>
+          <label
+            >Body
+            <select id="arm">
+              <option value="kx6l">KX-6L lightweight</option>
+              <option value="kx6">KX-6 stiff</option>
+            </select>
+          </label>
+          <label
+            >Actuators
+            <select id="unit">
+              <option value="datasheet">As on the datasheet</option>
+            </select>
+          </label>
+          <label
+            >Payload <output id="payload-out">0 kg</output>
+            <input id="payload" type="range" min="0" max="3" step="0.5" value="0"
+          /></label>
+          <label
+            >Link stiffness <output id="stiffness-out">100 %</output>
+            <input id="stiffness" type="range" min="25" max="200" step="25" value="100"
+          /></label>
+          <label class="check"><input id="brakes" type="checkbox" /> Brakes</label>
+        </fieldset>
+      </section>
+
+      <section class="plots">
+        <div class="card">
+          <h2>Tool distance from target</h2>
+          <canvas id="chart" class="chart"></canvas>
+        </div>
+        <div class="card">
+          <h2>
+            Bus of the
+            <select id="bus-side" aria-label="Which arm's bus">
+              <option value="0">left</option>
+              <option value="1">right</option>
+            </select>
+            arm
+          </h2>
+          <canvas id="bus" class="bus"></canvas>
+          <table id="rates"></table>
+          <ol id="events" class="events"></ol>
+        </div>
+      </section>
+    </main>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

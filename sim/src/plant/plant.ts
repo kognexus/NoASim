@@ -12,6 +12,14 @@ import { buildMjcf, type MjcfOptions, OBSTACLE } from "./mjcf.ts";
 import type { Mujoco } from "./mujoco.ts";
 import { ARM_NAMES, jointElementNames } from "./names.ts";
 
+/** A geom as the demo draws it (see {@link Plant.geoms}). */
+export interface GeomInfo {
+  readonly type: number;
+  readonly size: Vec3;
+  readonly rgba: readonly [number, number, number, number];
+  readonly joint: number;
+}
+
 /** MuJoCo addresses of one joint's elements; -1 where an element is absent. */
 interface JointAddresses {
   readonly motorQpos: number;
@@ -243,6 +251,55 @@ export class Plant {
   setToolForce(force: Vec3): void {
     const xfrc = this.#data.xfrc_applied as Float64Array;
     xfrc.set(force, this.#toolBody * 6);
+  }
+
+  /**
+   * The model's geoms, for drawing: MuJoCo type code (0 plane, 2 sphere, 3 capsule,
+   * 5 cylinder, 6 box), size, colour and the joint (0-based, −1 for none) whose motor or
+   * link body carries it.
+   */
+  geoms(): GeomInfo[] {
+    const m = this.#model;
+    const types = m.geom_type as Int32Array;
+    const sizes = m.geom_size as Float64Array;
+    const rgba = m.geom_rgba as Float32Array;
+    const bodies = m.geom_bodyid as Int32Array;
+    const parents = m.body_parentid as Int32Array;
+    const jointOfBody = (body: number): number => {
+      for (let b = body; b > 0; b = parents[b] ?? 0) {
+        const j = this.#joints.findIndex((adr) => adr.linkBody === b);
+        if (j >= 0) return j;
+      }
+      return -1;
+    };
+    return Array.from({ length: m.ngeom }, (_, g) => ({
+      type: types[g] ?? 0,
+      size: [sizes[3 * g] ?? 0, sizes[3 * g + 1] ?? 0, sizes[3 * g + 2] ?? 0],
+      rgba: [rgba[4 * g] ?? 1, rgba[4 * g + 1] ?? 1, rgba[4 * g + 2] ?? 1, rgba[4 * g + 3] ?? 1],
+      joint: jointOfBody(bodies[g] ?? 0),
+    }));
+  }
+
+  /** Where each joint is (world frame, m) and which way its axis points (unit vector). */
+  jointAnchors(): { position: Vec3; axis: Vec3 }[] {
+    const jointOfDof = this.#model.dof_jntid as Int32Array;
+    const anchors = this.#data.xanchor as Float64Array;
+    const axes = this.#data.xaxis as Float64Array;
+    return this.#joints.map((adr) => {
+      const j = jointOfDof[adr.gearDof] ?? 0;
+      return {
+        position: [anchors[3 * j] ?? 0, anchors[3 * j + 1] ?? 0, anchors[3 * j + 2] ?? 0],
+        axis: [axes[3 * j] ?? 0, axes[3 * j + 1] ?? 0, axes[3 * j + 2] ?? 1],
+      };
+    });
+  }
+
+  /** World positions (3 per geom) and rotation matrices (9 per geom, row-major) of every geom. */
+  geomPoses(): { positions: Float64Array; rotations: Float64Array } {
+    return {
+      positions: this.#data.geom_xpos as Float64Array,
+      rotations: this.#data.geom_xmat as Float64Array,
+    };
   }
 
   /** Frees the MuJoCo model and data. The plant must not be used afterwards. */
