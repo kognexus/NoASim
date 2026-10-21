@@ -199,11 +199,15 @@ pub struct NodeState {
     /// in this node's housing frame; zero without an outer neighbour. Relayed so that the
     /// inner neighbour can see one link further out.
     pub outer_rate: [f32; 3],
+    /// The joint's commanded reference this cycle: position (before any shift of its own),
+    /// velocity, and acceleration as the smoothed derivative of that velocity (output
+    /// side). Lets the others know how this joint is about to move (NX-31).
+    pub reference: [f32; 3],
 }
 
 impl NodeState {
     /// Payload length in bytes.
-    pub const LEN: usize = 4 + 20 * 4;
+    pub const LEN: usize = 4 + 23 * 4;
 
     fn write(&self, w: &mut Writer) {
         w.u16(self.status.0);
@@ -226,6 +230,7 @@ impl NodeState {
             w.f32(v);
         }
         w.vec3(self.outer_rate);
+        w.vec3(self.reference);
     }
 
     fn read(r: &mut Reader) -> Result<Self, DecodeError> {
@@ -247,6 +252,7 @@ impl NodeState {
             thermal_headroom: r.f32()?,
             tank_energy: r.f32()?,
             outer_rate: r.vec3()?,
+            reference: r.vec3()?,
         })
     }
 }
@@ -461,6 +467,8 @@ pub struct Settings {
     pub gravity: u8,
     /// Joints that must report an impact before the arm reacts (1 = any joint, B2).
     pub impact_confirm: u8,
+    /// Coordinated-model feed-forward (NX-31): 0 = off, 1 = on (with a model loaded).
+    pub coordinated_model: u8,
 }
 
 impl Settings {
@@ -474,7 +482,8 @@ impl Settings {
         w.u8(self.model);
         w.u8(self.gravity);
         w.u8(self.impact_confirm);
-        w.u16(0);
+        w.u8(self.coordinated_model);
+        w.u8(0);
     }
 
     fn read(r: &mut Reader) -> Result<Self, DecodeError> {
@@ -485,8 +494,9 @@ impl Settings {
             model: r.u8()?,
             gravity: r.u8()?,
             impact_confirm: r.u8()?,
+            coordinated_model: r.u8()?,
         };
-        r.u16()?;
+        r.u8()?;
         Ok(settings)
     }
 }
@@ -641,25 +651,30 @@ impl Disturbance {
 
 /// The host asking a node to run its commissioning excitation (B11): the node moves
 /// itself, inside its limits, for `duration_cycles`, then holds where it started.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Commission {
     /// How long the excitation runs, bus cycles.
     pub duration_cycles: u32,
     /// Varies the excitation's phases, so separate runs give independent data.
     pub seed: u32,
+    /// Scales every frequency of the excitation; 1 (or 0) is the standard band. Joints
+    /// commissioned together get interleaved frequencies, so their motions are independent
+    /// (NX-31).
+    pub frequency_scale: f32,
 }
 
 impl Commission {
     /// Payload length in bytes.
-    pub const LEN: usize = 8;
+    pub const LEN: usize = 12;
 
     fn write(self, w: &mut Writer) {
         w.u32(self.duration_cycles);
         w.u32(self.seed);
+        w.f32(self.frequency_scale);
     }
 
     fn read(r: &mut Reader) -> Result<Self, DecodeError> {
-        Ok(Self { duration_cycles: r.u32()?, seed: r.u32()? })
+        Ok(Self { duration_cycles: r.u32()?, seed: r.u32()?, frequency_scale: r.f32()? })
     }
 }
 
@@ -688,11 +703,14 @@ pub struct Chain {
     pub dynamic_force: [f32; 3],
     /// Moment of those `m·f` about the sender's joint, N·m.
     pub dynamic_moment: [f32; 3],
+    /// Predicted bend of the sender's link about the sender's axis, rad (NX-31; 0 without
+    /// a coordinated model). Its outer neighbour takes the rest of it out.
+    pub link_bend: f32,
 }
 
 impl Chain {
     /// Payload length in bytes.
-    pub const LEN: usize = 19 * 4;
+    pub const LEN: usize = 20 * 4;
 
     fn write(&self, w: &mut Writer) {
         w.vec3(self.up_link);
@@ -704,6 +722,7 @@ impl Chain {
         w.f32(self.holding_torque);
         w.vec3(self.dynamic_force);
         w.vec3(self.dynamic_moment);
+        w.f32(self.link_bend);
     }
 
     fn read(r: &mut Reader) -> Result<Self, DecodeError> {
@@ -717,6 +736,7 @@ impl Chain {
             holding_torque: r.f32()?,
             dynamic_force: r.vec3()?,
             dynamic_moment: r.vec3()?,
+            link_bend: r.f32()?,
         })
     }
 }

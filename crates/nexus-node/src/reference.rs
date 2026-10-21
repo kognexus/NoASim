@@ -27,26 +27,51 @@ pub trait Interpolator {
 
 /// Follows each goal as a setpoint the moment it arrives: position and velocity jump,
 /// then hold until the next one. This is how joints follow a host that interpolates
-/// centrally and streams setpoints.
-#[derive(Clone, Copy, Debug, Default)]
+/// centrally and streams setpoints. The acceleration is the change of the setpoints'
+/// velocity over the gap between them (NX-31), zero after a pause.
+#[derive(Clone, Copy, Debug)]
 pub struct StepInterpolator {
+    cycle_seconds: f32,
     target: f32,
     velocity: f32,
+    acceleration: f32,
+    last_goal: Option<u32>,
+}
+
+impl StepInterpolator {
+    /// A gap between setpoints longer than this is a pause, not the setpoint rate, cycles.
+    const MAX_GAP_CYCLES: u32 = 40;
+
+    /// Interpolator for a bus with cycle length `cycle_seconds`.
+    #[must_use]
+    pub const fn new(cycle_seconds: f32) -> Self {
+        Self { cycle_seconds, target: 0.0, velocity: 0.0, acceleration: 0.0, last_goal: None }
+    }
 }
 
 impl Interpolator for StepInterpolator {
     fn hold(&mut self, position: f32) {
         self.target = position;
         self.velocity = 0.0;
+        self.acceleration = 0.0;
+        self.last_goal = None;
     }
 
-    fn add_goal(&mut self, goal: &Goal, _now: u32) {
+    fn add_goal(&mut self, goal: &Goal, now: u32) {
+        let gap = self
+            .last_goal
+            .map(|last| now.wrapping_sub(last))
+            .filter(|g| (1..=Self::MAX_GAP_CYCLES).contains(g));
+        #[allow(clippy::cast_precision_loss)] // gaps are at most MAX_GAP_CYCLES
+        let change = gap.map_or(0.0, |g| (goal.velocity - self.velocity) / (g as f32 * self.cycle_seconds));
+        self.acceleration = change;
         self.target = goal.position;
         self.velocity = goal.velocity;
+        self.last_goal = Some(now);
     }
 
     fn reference(&mut self, _now: u32) -> Reference {
-        Reference { position: self.target, velocity: self.velocity, acceleration: 0.0 }
+        Reference { position: self.target, velocity: self.velocity, acceleration: self.acceleration }
     }
 }
 
@@ -232,7 +257,7 @@ impl SwitchableInterpolator {
     #[must_use]
     pub fn new(cycle_seconds: f32) -> Self {
         Self {
-            setpoints: StepInterpolator::default(),
+            setpoints: StepInterpolator::new(cycle_seconds),
             spline: SplineInterpolator::new(cycle_seconds),
             mode: InterpolationMode::Setpoints,
             last: Reference::default(),
@@ -275,7 +300,7 @@ impl Interpolator for SwitchableInterpolator {
 
 #[cfg(test)]
 mod tests {
-    use super::{GoalRate, Interpolator, Quintic, Reference, SplineInterpolator};
+    use super::{GoalRate, Interpolator, Quintic, Reference, SplineInterpolator, StepInterpolator};
     use nexus_proto::Goal;
 
     const DT: f32 = 0.00025;
@@ -353,5 +378,18 @@ mod tests {
         }
         let rest = interpolator.reference(now);
         assert!(rest.velocity.abs() < 1e-4 && (rest.position - 0.05).abs() < 0.02, "{rest:?}");
+    }
+
+    #[test]
+    fn setpoints_carry_the_acceleration_of_their_velocity_and_none_after_a_pause() {
+        let mut interpolator = StepInterpolator::new(DT);
+        let setpoint = |velocity| Goal { due_cycle: 0, position: 0.0, velocity, sequence: 0 };
+        interpolator.add_goal(&setpoint(0.1), 100);
+        assert!(interpolator.reference(100).acceleration.abs() < 1e-6, "no gap known yet");
+        // 1 kHz setpoints: four bus cycles apart, 0.002 rad/s faster each time.
+        interpolator.add_goal(&setpoint(0.102), 104);
+        assert!((interpolator.reference(105).acceleration - 2.0).abs() < 1e-3);
+        interpolator.add_goal(&setpoint(0.5), 104 + 1000);
+        assert!(interpolator.reference(1104).acceleration.abs() < 1e-6, "a pause, not a rate");
     }
 }

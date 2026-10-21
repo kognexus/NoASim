@@ -19,6 +19,7 @@ interface NexusExports {
   nexus_tick(): void;
   nexus_load_model(): number;
   nexus_load_coordinated_chunk(offset: number): number;
+  nexus_load_coordinated_model(): number;
   nexus_finish_coordinated(length: number): number;
   nexus_model_residual(
     angle: number,
@@ -149,6 +150,21 @@ export class WasmNode {
     if (status !== 0) {
       const reasons = ["not started", "too short", "version", "wrong joint", "orders", "invalid"];
       throw new Error(`node refused the model: ${reasons[status - 1] ?? status}`);
+    }
+  }
+
+  /** Loads the joint's coordinated model (NX-31, `packCoordinatedModel`). */
+  loadCoordinatedModel(words: Float32Array): void {
+    const layout = this.#layout;
+    if (words.length > layout.modelCapacity) {
+      throw new Error(`model is ${words.length} words; the node holds ${layout.modelCapacity}`);
+    }
+    new Float32Array(this.#exports.memory.buffer, layout.model, words.length).set(words);
+    new DataView(this.#exports.memory.buffer).setUint32(layout.modelLen, words.length, true);
+    const status = this.#exports.nexus_load_coordinated_model();
+    if (status !== 0) {
+      const reasons = ["not started", "too short", "version", "wrong joint", "invalid"];
+      throw new Error(`node refused the coordinated model: ${reasons[status - 1] ?? status}`);
     }
   }
 

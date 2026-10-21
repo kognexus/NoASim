@@ -24,6 +24,7 @@ import { h9 } from "./prove/h9.ts";
 import { headroom } from "./prove/headroom.ts";
 import { coordination } from "./prove/coordination.ts";
 import { estimation } from "./prove/estimation.ts";
+import { neighbourhood } from "./prove/neighbourhood.ts";
 import { reach } from "./prove/reach.ts";
 import { openLab } from "./runner.ts";
 
@@ -62,6 +63,7 @@ const STEPS: [string[], () => Promise<Finding | Finding[]>][] = [
   [["Reach"], () => reach(ctx)],
   [["Coordinated"], () => coordination(ctx)],
   [["Estimator"], () => estimation(ctx)],
+  [["Neighbourhood"], () => neighbourhood(ctx)],
 ];
 
 const ORDER = [
@@ -86,6 +88,7 @@ const ORDER = [
   "Reach",
   "Coordinated",
   "Estimator",
+  "Neighbourhood",
 ];
 const findings: Finding[] = [];
 for (const [ids, step] of STEPS) {

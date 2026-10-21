@@ -78,6 +78,8 @@ export interface NodeState {
   tankEnergy: number;
   /** Angular velocity of the far end of the sender's link, sender's housing frame. */
   outerRate: Vec3f;
+  /** The joint's reference this cycle: position, velocity, acceleration (NX-31). */
+  reference: Vec3f;
 }
 
 export interface Goal {
@@ -123,6 +125,8 @@ export interface Commission {
   durationCycles: number;
   /** Varies the excitation's phases between runs. */
   seed: number;
+  /** Scales every frequency (1 = the standard band; NX-31 interleaves joints). */
+  frequencyScale: number;
 }
 
 export interface Assign {
@@ -153,6 +157,8 @@ export interface Settings {
   gravity: number;
   /** Joints that must report an impact before the arm reacts (0 = disarmed, 1 = any). */
   impactConfirm: number;
+  /** Coordinated-model feed-forward (NX-31): 0 = off, 1 = on. */
+  coordinatedModel: number;
 }
 
 /** Impact policies (PLAN §2.1). */
@@ -198,6 +204,8 @@ export interface Chain {
   dynamicForce: Vec3f;
   /** Moment of those m·f about the sender's joint, N·m. */
   dynamicMoment: Vec3f;
+  /** Predicted bend of the sender's link about its axis, rad (NX-31). */
+  linkBend: number;
 }
 
 export type Frame =
@@ -216,19 +224,19 @@ export type Frame =
   | { header: Header & { kind: typeof FrameKind.Commission }; commission: Commission };
 
 const PAYLOAD_LEN: Record<FrameKind, number> = {
-  [FrameKind.State]: 4 + 20 * 4,
+  [FrameKind.State]: 4 + 23 * 4,
   [FrameKind.Goal]: 16,
   [FrameKind.Limits]: 24,
   [FrameKind.Announce]: 4 + 14 * 4,
   [FrameKind.Assign]: 4,
   [FrameKind.Settings]: 8,
-  [FrameKind.Chain]: 19 * 4,
+  [FrameKind.Chain]: 20 * 4,
   [FrameKind.Impact]: 8,
   [FrameKind.Heartbeat]: 0,
   [FrameKind.Ack]: 4,
   [FrameKind.Fault]: 8,
   [FrameKind.Disturbance]: 12,
-  [FrameKind.Commission]: 8,
+  [FrameKind.Commission]: 12,
 };
 
 /** Encoded length of a frame of `kind`, header included. */
@@ -316,6 +324,7 @@ export function encodeFrame(frame: Frame): Uint8Array {
       s.tankEnergy,
     );
     w.f32(...s.outerRate);
+    w.f32(...s.reference);
   } else if ("goal" in frame) {
     const g = frame.goal;
     w.u32(g.dueCycle);
@@ -354,7 +363,8 @@ export function encodeFrame(frame: Frame): Uint8Array {
     w.u8(st.model);
     w.u8(st.gravity);
     w.u8(st.impactConfirm);
-    w.u16(0);
+    w.u8(st.coordinatedModel);
+    w.u8(0);
   } else if ("impact" in frame) {
     w.f32(frame.impact.score);
     w.u8(frame.impact.evidence);
@@ -379,6 +389,7 @@ export function encodeFrame(frame: Frame): Uint8Array {
   } else if ("commission" in frame) {
     w.u32(frame.commission.durationCycles);
     w.u32(frame.commission.seed);
+    w.f32(frame.commission.frequencyScale);
   } else if ("chain" in frame) {
     const c = frame.chain;
     w.f32(
@@ -390,7 +401,7 @@ export function encodeFrame(frame: Frame): Uint8Array {
       c.payloadLever,
       c.holdingTorque,
     );
-    w.f32(...c.dynamicForce, ...c.dynamicMoment);
+    w.f32(...c.dynamicForce, ...c.dynamicMoment, c.linkBend);
   } else {
     w.u8(frame.assign.position);
     w.u8(frame.assign.id);
@@ -430,6 +441,7 @@ export function decodeFrame(bytes: Uint8Array): Frame {
         thermalHeadroom: r.f32(),
         tankEnergy: r.f32(),
         outerRate: r.vec3(),
+        reference: r.vec3(),
       };
       return { header: { kind, source, destination, cycle }, state };
     }
@@ -466,12 +478,13 @@ export function decodeFrame(bytes: Uint8Array): Frame {
     case FrameKind.Settings: {
       const damping = r.u8();
       const settings: Settings = {
-        damping: (damping <= 3 ? damping : 0) as DampingMode,
+        damping: (damping <= 4 ? damping : 0) as DampingMode,
         interpolation: r.u8(),
         impactPolicy: r.u8(),
         model: r.u8(),
         gravity: r.u8(),
         impactConfirm: r.u8(),
+        coordinatedModel: r.u8(),
       };
       return { header: { kind, source, destination, cycle }, settings };
     }
@@ -486,6 +499,7 @@ export function decodeFrame(bytes: Uint8Array): Frame {
         holdingTorque: r.f32(),
         dynamicForce: r.vec3(),
         dynamicMoment: r.vec3(),
+        linkBend: r.f32(),
       };
       return { header: { kind, source, destination, cycle }, chain };
     }
@@ -505,7 +519,7 @@ export function decodeFrame(bytes: Uint8Array): Frame {
       return { header: { kind, source, destination, cycle }, disturbance };
     }
     case FrameKind.Commission: {
-      const commission = { durationCycles: r.u32(), seed: r.u32() };
+      const commission = { durationCycles: r.u32(), seed: r.u32(), frequencyScale: r.f32() };
       return { header: { kind, source, destination, cycle }, commission };
     }
     case FrameKind.Fault: {

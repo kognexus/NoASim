@@ -37,6 +37,7 @@ fn samples() -> Vec<(&'static str, Frame)> {
                     thermal_headroom: 0.875,
                     tank_energy: 0.5,
                     outer_rate: [0.25, -0.5, 0.125],
+                    reference: [1.5, -0.375, 2.25],
                 },
             ),
         ),
@@ -90,6 +91,7 @@ fn samples() -> Vec<(&'static str, Frame)> {
                     model: 1,
                     gravity: 1,
                     impact_confirm: 2,
+                    coordinated_model: 1,
                 },
             ),
         ),
@@ -107,6 +109,7 @@ fn samples() -> Vec<(&'static str, Frame)> {
                     holding_torque: -31.25,
                     dynamic_force: [1.5, -2.25, 70.5],
                     dynamic_moment: [-0.5, 30.75, 0.125],
+                    link_bend: -0.000_976_562_5,
                 },
             ),
         ),
@@ -137,7 +140,7 @@ fn samples() -> Vec<(&'static str, Frame)> {
             "commission",
             Frame::Commission(
                 header(FrameKind::Commission, 0, Destination::Node(NodeId(3))),
-                Commission { duration_cycles: 48_000, seed: 0x0102_0304 },
+                Commission { duration_cycles: 48_000, seed: 0x0102_0304, frequency_scale: 1.125 },
             ),
         ),
         (

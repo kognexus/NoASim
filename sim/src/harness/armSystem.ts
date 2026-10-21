@@ -20,6 +20,7 @@ import { Host, type HostOptions } from "../host/host.ts";
 import { BUS_CYCLE_HZ } from "../index.ts";
 import type { NodeConfig } from "../node/nodeConfig.ts";
 import { packPhnnModel, type PhnnDocument } from "../node/phnnModel.ts";
+import { type CoordinatedModelDocument, packCoordinatedModel } from "../node/coordinatedModel.ts";
 import { WasmNode } from "../node/wasmNode.ts";
 import type { ArmSpec } from "../plant/armSpec.ts";
 import { type ActuatorOutput, type ActuatorPhysics, IdealDrive } from "../plant/drive.ts";
@@ -63,6 +64,8 @@ export interface ArmSystemOptions {
   readonly models?: readonly (PhnnDocument | undefined)[];
   /** Coordinated-damping model blocks per joint (NX-30, `coordinatedBlocks`). */
   readonly coordinated?: readonly (Float32Array | undefined)[];
+  /** Coordinated models per joint (NX-31), switched on by `Settings.coordinatedModel`. */
+  readonly coordinatedModels?: readonly (CoordinatedModelDocument | undefined)[];
 }
 
 /** Everything belonging to one joint. */
@@ -154,6 +157,8 @@ export class ArmSystem {
         if (model) node.loadModel(packPhnnModel(model));
         const coordinated = options.coordinated?.[index];
         if (coordinated) node.loadCoordinated(coordinated);
+        const coordinatedModel = options.coordinatedModels?.[index];
+        if (coordinatedModel) node.loadCoordinatedModel(packCoordinatedModel(coordinatedModel));
         const sensors = new JointSensors(
           joint.actuator,
           options.sensors ?? NEXUS_SENSORS,

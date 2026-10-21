@@ -3,6 +3,9 @@
 use crate::config::NodeConfig;
 use crate::control::Controller;
 use crate::coordinated::{Coordinated, CoordinatedError, NearStates};
+use crate::coordinated_model::{
+    CoordinatedFeedforward, CoordinatedFeedforwardStage, CoordinatedModel, ReferenceAcceleration,
+};
 use crate::damping::{Damper, DampingContext, MAX_NEIGHBOUR_AGE};
 use crate::dynamics::{DynamicsModel, MotorBalance};
 use crate::estimate::{Estimate, Estimator};
@@ -18,9 +21,9 @@ use crate::safety::{thermal_headroom, SafetySupervisor};
 use crate::sensors::SensorFrame;
 use crate::source::SourceTracker;
 use crate::supervisor::{Directive, ImpactPolicy, Supervisor, SupervisorTiming};
-use crate::vector::rotate;
+use crate::vector::{dot, rotate};
 use nexus_proto::{
-    DampingMode, Destination, Fault, FaultCode, Frame, FrameKind, Header, Limits, NodeId, NodeState,
+    Chain, DampingMode, Destination, Fault, FaultCode, Frame, FrameKind, Header, Limits, NodeId, NodeState,
     Settings, StatusFlags,
 };
 
@@ -77,6 +80,11 @@ pub struct Actuator<E, I, C, D, S> {
     goal_rate: GoalRate,
     coordinated: Coordinated,
     near: NearStates,
+    coordinated_model: CoordinatedFeedforwardStage,
+    last_bend: f32,
+    last_shift: f32,
+    reference_acceleration: ReferenceAcceleration,
+    published_acceleration: f32,
 }
 
 /// Outputs of a node besides its torque: the brake and the hardwired safe-torque-off line.
@@ -131,6 +139,11 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             goal_rate: GoalRate::default(),
             coordinated: Coordinated::new(line_position, config.cycle_seconds()),
             near: NearStates::default(),
+            coordinated_model: CoordinatedFeedforwardStage::new(config.reflected_inertia),
+            last_bend: 0.0,
+            last_shift: 0.0,
+            reference_acceleration: ReferenceAcceleration::new(config.cycle_seconds()),
+            published_acceleration: 0.0,
         }
     }
 
@@ -242,11 +255,12 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
                 outbox.push(&Frame::Fault(self.header(FrameKind::Fault, Destination::Host, cycle), fault));
             }
         }
-        let reference = self.speed_limited(self.directive.reference.unwrap_or(planned));
+        let (reference, coupling) = self.reference(planned, gravity.holding_torque, cycle);
         // Position-locked terms (cogging, ripple) follow the motor where it is; friction
         // follows the planned speed, which is smooth.
-        let feedforward =
-            self.models.friction(estimate.motor_angle, reference.velocity) + gravity.holding_torque;
+        let feedforward = self.models.friction(estimate.motor_angle, reference.velocity)
+            + gravity.holding_torque
+            + coupling.torque;
         let control = self.stages.controller.torque(&estimate, &reference, feedforward);
 
         let damping = self.damping(&estimate, &reference, cycle);
@@ -291,14 +305,14 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
         self.last_torque = torque;
         self.last_damping = damping;
         if self.id != NodeId::UNASSIGNED {
-            let frame = self.state_frame(cycle, &estimate, torque);
+            let frame = self.state_frame(cycle, &estimate, &reference, torque);
             if let Frame::State(_, state) = &frame {
                 self.near.on_state(self.id, state, cycle);
             }
             outbox.push(&frame);
             if cycle % CHAIN_PERIOD == u32::from(self.line_position) % CHAIN_PERIOD {
                 let header = self.header(FrameKind::Chain, Destination::Neighbours, cycle);
-                outbox.push(&Frame::Chain(header, gravity.chain));
+                outbox.push(&Frame::Chain(header, Chain { link_bend: self.last_bend, ..gravity.chain }));
             }
         }
         torque
@@ -390,6 +404,70 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             .map_or([0.0; 3], |state| rotate(state.gyro, self.config.axis, angle))
     }
 
+    /// Installs the joint's coordinated model (NX-31), read from its exported words.
+    ///
+    /// # Errors
+    ///
+    /// When the block is not a valid model for this joint.
+    pub fn load_coordinated_model(&mut self, words: &[f32]) -> Result<(), ModelError> {
+        self.coordinated_model.load(CoordinatedModel::from_words(words, self.line_position)?);
+        Ok(())
+    }
+
+    /// Whether the coordinated model is loaded and switched on.
+    fn coordinated_model_on(&self) -> bool {
+        self.settings.coordinated_model != 0 && self.coordinated_model.loaded()
+    }
+
+    /// This cycle's reference (the supervisor's while it reacts, else the plan; speed
+    /// limited, and shifted by the coordinated model) and the model's feed-forward.
+    fn reference(
+        &mut self,
+        planned: Reference,
+        hold: f32,
+        cycle: u32,
+    ) -> (Reference, CoordinatedFeedforward) {
+        let reacting = self.directive.reference.is_some();
+        let reference = self.speed_limited(self.directive.reference.unwrap_or(planned));
+        let goal_hz = self.goal_rate.hz(self.config.cycle_seconds());
+        self.published_acceleration = self.reference_acceleration.update(reference.velocity, goal_hz);
+        let coupling = if reacting {
+            CoordinatedFeedforward::default()
+        } else {
+            self.coordinated_feedforward(&reference, hold, cycle)
+        };
+        self.last_bend = coupling.bend;
+        self.last_shift = coupling.shift;
+        (Reference { position: reference.position + coupling.shift, ..reference }, coupling)
+    }
+
+    /// The coordinated model's feed-forward this cycle (nothing while it is off or during
+    /// commissioning).
+    fn coordinated_feedforward(
+        &mut self,
+        reference: &Reference,
+        hold: f32,
+        cycle: u32,
+    ) -> CoordinatedFeedforward {
+        if !self.coordinated_model_on() || self.excitation.is_some() {
+            return CoordinatedFeedforward::default();
+        }
+        // The inner neighbour's link bend, on our axis (both axes in its link frame).
+        let inner_bend = self
+            .neighbours
+            .get(Side::Inner)
+            .and_then(|n| n.chain.as_ref().map(|c| c.link_bend * dot(n.announce.axis, self.config.axis)));
+        self.coordinated_model.update(
+            reference,
+            self.published_acceleration,
+            &self.near,
+            self.line_position,
+            cycle,
+            hold,
+            inner_bend,
+        )
+    }
+
     /// Installs the joint's frozen learned model (B11), read from its exported words.
     ///
     /// # Errors
@@ -461,7 +539,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
         Header { kind, source: self.id, destination, cycle }
     }
 
-    fn state_frame(&self, cycle: u32, e: &Estimate, torque: f32) -> Frame {
+    fn state_frame(&self, cycle: u32, e: &Estimate, reference: &Reference, torque: f32) -> Frame {
         let mut status = 0;
         if self.has_limits {
             status |= StatusFlags::READY;
@@ -476,7 +554,9 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
         // Coordinated damping needs the joints up to two places away: then every joint
         // hears every state frame, and each carries its coordinated command.
         let coordinated = self.settings.damping == DampingMode::Coordinated;
-        let destination = if coordinated { Destination::All } else { Destination::Neighbours };
+        // The coordinated model reads the joints up to two places away too (NX-31).
+        let wide = coordinated || self.coordinated_model_on();
+        let destination = if wide { Destination::All } else { Destination::Neighbours };
         Frame::State(
             self.header(FrameKind::State, destination, cycle),
             NodeState {
@@ -495,6 +575,12 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
                 thermal_headroom: thermal_headroom(e.temperature, self.limits.max_temperature, AMBIENT),
                 tank_energy: self.stages.damper.tank_energy(),
                 outer_rate: self.outer_rate(cycle, e.output_angle),
+                // The commanded reference: the sag shift is the joint's own business.
+                reference: [
+                    reference.position - self.last_shift,
+                    reference.velocity,
+                    self.published_acceleration,
+                ],
             },
         )
     }

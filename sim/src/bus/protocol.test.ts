@@ -38,6 +38,7 @@ const SAMPLES: Record<string, Frame> = {
       thermalHeadroom: 0.875,
       tankEnergy: 0.5,
       outerRate: [0.25, -0.5, 0.125],
+      reference: [1.5, -0.375, 2.25],
     },
   },
   goal: {
@@ -80,6 +81,7 @@ const SAMPLES: Record<string, Frame> = {
       model: 1,
       gravity: 1,
       impactConfirm: 2,
+      coordinatedModel: 1,
     },
   },
   impact: { header: header(FrameKind.Impact, 5, 0xff), impact: { score: 3.5, evidence: 3 } },
@@ -92,7 +94,7 @@ const SAMPLES: Record<string, Frame> = {
   },
   commission: {
     header: header(FrameKind.Commission, 0, 3),
-    commission: { durationCycles: 48_000, seed: 0x01020304 },
+    commission: { durationCycles: 48_000, seed: 0x01020304, frequencyScale: 1.125 },
   },
   chain: {
     header: header(FrameKind.Chain, 2, 0xfe),
@@ -106,6 +108,7 @@ const SAMPLES: Record<string, Frame> = {
       holdingTorque: -31.25,
       dynamicForce: [1.5, -2.25, 70.5],
       dynamicMoment: [-0.5, 30.75, 0.125],
+      linkBend: -0.0009765625,
     },
   },
 };

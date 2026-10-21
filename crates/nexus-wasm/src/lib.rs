@@ -21,8 +21,12 @@ use core::cell::UnsafeCell;
 use core::mem::{offset_of, size_of};
 use nexus_node::{
     default_actuator, CoordinatedError, DefaultActuator, Inbox, ModelError, MotorBalance, NodeConfig, Outbox,
-    SensorFrame, MODEL_WORDS,
+    SensorFrame, COORDINATED_MODEL_WORDS, MODEL_WORDS,
 };
+
+/// Capacity of the model buffer, words: a learned model or a coordinated model (NX-31).
+pub const LOAD_WORDS: usize =
+    if MODEL_WORDS > COORDINATED_MODEL_WORDS { MODEL_WORDS } else { COORDINATED_MODEL_WORDS };
 
 /// Capacity of the inbox, bytes.
 pub const INBOX_BYTES: usize = 4096;
@@ -55,7 +59,7 @@ pub struct Io {
     /// Words of `model` in use, written by the harness before [`nexus_load_model`].
     pub model_len: u32,
     /// The joint's frozen learned model (B11), as exported by `learning/`.
-    pub model: [f32; MODEL_WORDS],
+    pub model: [f32; LOAD_WORDS],
 }
 
 /// Fields whose offsets [`nexus_layout`] reports, in this order.
@@ -77,7 +81,7 @@ const LAYOUT: [usize; 18] = [
     offset_of!(Io, safe_torque_off),
     offset_of!(Io, model_len),
     offset_of!(Io, model),
-    MODEL_WORDS,
+    LOAD_WORDS,
 ];
 
 struct Instance {
@@ -114,7 +118,7 @@ static INSTANCE: Global = Global(UnsafeCell::new(Instance {
         inbox: [0; INBOX_BYTES],
         outbox: [0; OUTBOX_BYTES],
         model_len: 0,
-        model: [0.0; MODEL_WORDS],
+        model: [0.0; LOAD_WORDS],
     },
 }));
 
@@ -155,7 +159,7 @@ pub extern "C" fn nexus_init(line_position: u32) {
 pub extern "C" fn nexus_load_model() -> u32 {
     let Instance { node, io } = instance();
     let Some(node) = node.as_mut() else { return 1 };
-    let len = (io.model_len as usize).min(MODEL_WORDS);
+    let len = (io.model_len as usize).min(LOAD_WORDS);
     match node.load_model(&io.model[..len]) {
         Ok(()) => 0,
         Err(reason) => {
@@ -170,6 +174,27 @@ pub extern "C" fn nexus_load_model() -> u32 {
     }
 }
 
+/// Loads the coordinated model (NX-31) from `io.model[..io.model_len]` into the started
+/// node. Returns 0 on success, 1 if the node is not started, or 2 + the reason it was
+/// refused (too short, version, wrong joint, invalid).
+#[unsafe(no_mangle)]
+pub extern "C" fn nexus_load_coordinated_model() -> u32 {
+    let Instance { node, io } = instance();
+    let Some(node) = node.as_mut() else { return 1 };
+    let len = (io.model_len as usize).min(LOAD_WORDS);
+    match node.load_coordinated_model(&io.model[..len]) {
+        Ok(()) => 0,
+        Err(reason) => {
+            2 + match reason {
+                ModelError::TooShort => 0,
+                ModelError::Version => 1,
+                ModelError::WrongJoint => 2,
+                ModelError::TooManyOrders | ModelError::Invalid => 3,
+            }
+        }
+    }
+}
+
 /// Copies `io.model[..io.model_len]` into the coordinated-damping model being loaded,
 /// from word `offset` on (NX-30: the block is larger than the buffer, so it comes in
 /// chunks). Returns 0, or 1 if the node is not started.
@@ -177,7 +202,7 @@ pub extern "C" fn nexus_load_model() -> u32 {
 pub extern "C" fn nexus_load_coordinated_chunk(offset: u32) -> u32 {
     let Instance { node, io } = instance();
     let Some(node) = node.as_mut() else { return 1 };
-    let len = (io.model_len as usize).min(MODEL_WORDS);
+    let len = (io.model_len as usize).min(LOAD_WORDS);
     node.load_coordinated_chunk(offset as usize, &io.model[..len]);
     0
 }

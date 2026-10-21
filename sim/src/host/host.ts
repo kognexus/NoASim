@@ -84,6 +84,11 @@ export class Host {
   readonly load: HostLoad = { ikSolves: 0, interpolationSteps: 0, goalFramesSent: 0 };
   /** Latest output angle reported by each node, by address. */
   readonly jointAngles = new Map<number, number>();
+  /**
+   * Each joint's commanded reference angle, as it publishes it (NX-31). Tasks start from
+   * these: a joint taking its link's sag out stands a little off its commanded angle.
+   */
+  readonly jointReferences = new Map<number, number>();
   /** Every fault the nodes reported, in order. */
   readonly faults: { cycle: number; node: number; code: number; value: number }[] = [];
   /** Every disturbance report the nodes broadcast, in order. */
@@ -113,6 +118,7 @@ export class Host {
     model: 0,
     gravity: 1,
     impactConfirm: 0,
+    coordinatedModel: 0,
   };
 
   constructor(spec: ArmSpec, rng: Random, options: HostOptions = {}) {
@@ -160,7 +166,8 @@ export class Host {
   /** Starts following `task` from the joints' current angles. */
   startTask(task: Task, cycle: number, options: TaskOptions): MotionController {
     const start = this.#spec.joints.map(
-      (joint, i) => this.jointAngles.get(i + 1) ?? joint.initialAngle,
+      (joint, i) =>
+        this.jointReferences.get(i + 1) ?? this.jointAngles.get(i + 1) ?? joint.initialAngle,
     );
     const time = cycle / BUS_CYCLE_HZ;
     this.applySettings({ interpolation: options.mode === "joint-level" ? 1 : 0 });
@@ -245,10 +252,10 @@ export class Host {
    * Asks node `address` to run its commissioning excitation for `seconds` (B11). `seed`
    * varies the excitation, so separate runs give independent data.
    */
-  commission(address: number, seconds: number, seed: number): void {
+  commission(address: number, seconds: number, seed: number, frequencyScale = 1): void {
     this.#queue.push({
       header: { kind: FrameKind.Commission, source: Address.host, destination: address, cycle: 0 },
-      commission: { durationCycles: Math.round(seconds * BUS_CYCLE_HZ), seed },
+      commission: { durationCycles: Math.round(seconds * BUS_CYCLE_HZ), seed, frequencyScale },
     });
   }
 
@@ -256,8 +263,10 @@ export class Host {
   tick(cycle: number, inbox: Uint8Array): Uint8Array {
     this.lastReceived = decodeRecords(inbox).map(decodeFrame);
     for (const f of this.lastReceived) {
-      if ("state" in f) this.jointAngles.set(f.header.source, f.state.outputAngle);
-      else if ("fault" in f)
+      if ("state" in f) {
+        this.jointAngles.set(f.header.source, f.state.outputAngle);
+        this.jointReferences.set(f.header.source, f.state.reference[0]);
+      } else if ("fault" in f)
         this.faults.push({ cycle: f.header.cycle, node: f.header.source, ...f.fault });
       else if ("impact" in f)
         this.impacts.push({ cycle: f.header.cycle, node: f.header.source, ...f.impact });

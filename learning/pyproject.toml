@@ -7,6 +7,7 @@ dependencies = ["numpy>=2.0", "torch>=2.4"]
 
 [project.scripts]
 nexus-train = "nexus_learning.train:main"
+nexus-coordinated = "nexus_learning.coordinated:main"
 
 [build-system]
 requires = ["hatchling"]

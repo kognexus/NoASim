@@ -47,10 +47,11 @@ impl Excitation {
         let mut amplitude = [0.0; COMPONENTS];
         let mut phase = [0.0; COMPONENTS];
         let mut random = Lcg(request.seed ^ 0x9E37_79B9);
+        let band_scale = if request.frequency_scale > 0.0 { request.frequency_scale } else { 1.0 };
         #[allow(clippy::cast_precision_loss)]
         for k in 0..COMPONENTS {
             let share = k as f32 / (COMPONENTS - 1) as f32;
-            let hz = BAND_HZ.0 * libm::powf(BAND_HZ.1 / BAND_HZ.0, share);
+            let hz = band_scale * BAND_HZ.0 * libm::powf(BAND_HZ.1 / BAND_HZ.0, share);
             omega[k] = TAU * hz;
             // Between equal position and equal velocity per component, so both slow
             // sweeps and quick reversals carry energy.
@@ -171,7 +172,7 @@ mod tests {
 
     #[test]
     fn stays_inside_its_limits_and_starts_and_ends_at_rest() {
-        let request = Commission { duration_cycles: 40_000, seed: 7 };
+        let request = Commission { duration_cycles: 40_000, seed: 7, frequency_scale: 1.0 };
         let excitation = Excitation::new(0.5, 1000, &request, &limits(), DT);
         let (excursion, speed, jump) = run(&excitation);
         assert!(excursion <= 0.35 + 1e-4 && excursion > 0.1, "{excursion}");
@@ -184,7 +185,7 @@ mod tests {
 
     #[test]
     fn keeps_clear_of_a_near_position_limit() {
-        let request = Commission { duration_cycles: 40_000, seed: 7 };
+        let request = Commission { duration_cycles: 40_000, seed: 7, frequency_scale: 1.0 };
         let excitation = Excitation::new(2.8, 0, &request, &limits(), DT);
         let mut k = 0;
         while let Some(r) = excitation.reference(k) {
@@ -195,8 +196,20 @@ mod tests {
 
     #[test]
     fn seeds_give_different_runs() {
-        let a = Excitation::new(0.0, 0, &Commission { duration_cycles: 8000, seed: 1 }, &limits(), DT);
-        let b = Excitation::new(0.0, 0, &Commission { duration_cycles: 8000, seed: 2 }, &limits(), DT);
+        let a = Excitation::new(
+            0.0,
+            0,
+            &Commission { duration_cycles: 8000, seed: 1, frequency_scale: 1.0 },
+            &limits(),
+            DT,
+        );
+        let b = Excitation::new(
+            0.0,
+            0,
+            &Commission { duration_cycles: 8000, seed: 2, frequency_scale: 1.0 },
+            &limits(),
+            DT,
+        );
         let differ = (0..8000)
             .any(|k| (a.reference(k).unwrap().position - b.reference(k).unwrap().position).abs() > 1e-3);
         assert!(differ);

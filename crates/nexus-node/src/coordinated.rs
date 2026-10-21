@@ -117,6 +117,12 @@ impl NearStates {
         }
     }
 
+    /// The latest frame of the joint at `position` and the cycle it was sent, however old.
+    pub(crate) fn latest(&self, position: u8) -> Option<(&NodeState, u32)> {
+        let slot = self.slots.get(usize::from(position))?;
+        Some((slot.state.as_ref()?, slot.cycle))
+    }
+
     /// The latest frame of the joint at `position`, if it is at most `max_age` old.
     fn fresh(&self, position: usize, now: u32, max_age: u32) -> Option<(&NodeState, f32)> {
         let slot = self.slots.get(position)?;

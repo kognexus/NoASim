@@ -340,6 +340,7 @@ impl GravityCompensator {
                 holding_torque: hold,
                 dynamic_force: self.link.to_housing(force, angle),
                 dynamic_moment: self.link.to_housing(moment, angle),
+                link_bend: 0.0,
             },
         }
     }
