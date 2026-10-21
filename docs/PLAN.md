@@ -277,10 +277,13 @@ you say so.
 | **NX-22** | Policy computer or classic controller (added 21 Oct, after review) | A host profile for a classic real-time controller that streams setpoints at 1–4 kHz next to the VLA policy computer; switching between them by task, and a mid-motion takeover, without a jump; demo selector |
 | **NX-23** | Damping leaves commanded motion alone (added 21 Oct, after review) | Damping signals relative to the joint's own reference velocity, so damped arms track tasks at least as well as undamped ones; demo chart legend; results re-measured |
 | **NX-24** | Demo for comparison (added 21 Oct, after review) | Both 3D views share one camera; each arm's charts under its view on shared scales; a chart of the vibration each joint feels; help tooltips on every control |
+| **NX-25** | Network damping without extra vibration under a policy computer (added 21 Oct) | Find why network damping adds 10–20 % joint vibration under 15 Hz goals; fix it without losing tap settling or tracking |
+| **NX-26** | Budget and premium actuator grades (added 21 Oct) | Grades of drawn imperfections, including phase-current offset and gain mismatch; per-grade proof; demo selector |
+| **NX-27** | Headroom for learned damping (added 21 Oct) | A full-state ideal controller as an upper bound against the joints' damping; whether RL is worth it |
 
 Order: NX-00 → 01 (the spike; it can change the plan) → 02 to 12 in order → 13 to 15 (PHNN)
 → 16 to 18 → 19 → 20 → 21. NX-20 can start once NX-11 lands, so the demo grows with the
-features. NX-22 to NX-24 were added after the owner's first review.
+features. NX-22 to NX-27 were added after the owner's first review.
 
 **Modelling choice (decided 20 Oct).** Stabilisation is port-Hamiltonian in structure. The
 joint's model of itself is learned (a PHNN), because the claim is that the unit doesn't need
