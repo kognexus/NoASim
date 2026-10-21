@@ -7,7 +7,10 @@
  * out. The host records every joint's state frames; a joint's coordinated model is
  * trained on its own columns and those of the joints up to two places away.
  *
- *   node experiments/src/commission-neighbourhood.ts
+ *   node experiments/src/commission-neighbourhood.ts [--payload <kg>]
+ *
+ * By default the arm carries its spec's payload (3 kg), as in every experiment; the demo
+ * starts with none, and its models come from `--payload 0` (unit `<arm>-payload0`).
  *
  * Writes experiments/results/commissioning/<arm>-neighbourhood/:
  *   meta.json                       what each node knows about itself, and the format
@@ -42,10 +45,19 @@ const COMMISSIONING_POSTURES: Record<string, readonly number[]> = {
 };
 const ARMS = { kx6l: KX6L, kx6: KX6 } as const;
 
+const payloadArg = process.argv.indexOf("--payload");
+const payload = payloadArg > 0 ? Number(process.argv[payloadArg + 1]) : undefined;
+if (payload !== undefined && !(payload >= 0)) throw new Error("--payload needs a mass in kg");
+
 const lab = await openLab();
-for (const [arm, base] of Object.entries(ARMS)) {
+for (const [arm, armSpec] of Object.entries(ARMS)) {
+  const base =
+    payload === undefined
+      ? armSpec
+      : { ...armSpec, payload: { ...armSpec.payload, mass: payload } };
+  const unit = payload === undefined ? arm : `${arm}-payload${payload}`;
   const gains = tunedGains(arm, "network");
-  const dir = new URL(`../results/commissioning/${arm}-neighbourhood/`, import.meta.url);
+  const dir = new URL(`../results/commissioning/${unit}-neighbourhood/`, import.meta.url);
   await mkdir(new URL("truth/", dir), { recursive: true });
   let seed = 7000;
   for (const [posture, angles] of Object.entries(COMMISSIONING_POSTURES)) {
@@ -75,6 +87,8 @@ for (const [arm, base] of Object.entries(ARMS)) {
     `${JSON.stringify(
       {
         arm,
+        unit,
+        payload: base.payload.mass,
         cycleHz: BUS_CYCLE_HZ,
         actuationDelayCycles: 1,
         postures: Object.keys(COMMISSIONING_POSTURES),

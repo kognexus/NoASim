@@ -3,7 +3,15 @@ import type { CoordinatedDocument } from "../../sim/src/analysis/estimator.ts";
 import { FaultCode } from "../../sim/src/bus/protocol.ts";
 import { loadMujoco, type Mujoco } from "../../sim/src/plant/mujoco.ts";
 import { loadNodeModule } from "../../sim/src/testing/fixtures.ts";
-import { ArmRig, BUS_CYCLE_HZ, DampingMode, DEFAULT_SHARED, TwinRig } from "./rig.ts";
+import type { CoordinatedModelDocument } from "../../sim/src/node/coordinatedModel.ts";
+import {
+  ArmRig,
+  BUS_CYCLE_HZ,
+  COORDINATED_MODELS,
+  DampingMode,
+  DEFAULT_SHARED,
+  TwinRig,
+} from "./rig.ts";
 import { VibrationMeter } from "../../sim/src/analysis/vibration.ts";
 
 describe("the demo's twin arms (NX-20)", () => {
@@ -96,6 +104,36 @@ describe("the demo's twin arms (NX-20)", () => {
       });
     }
     expect(sum[0]!).toBeLessThan(0.7 * sum[1]!);
+  });
+
+  it("the coordinated models take most of the light arm's sag out of a hold (NX-31)", async () => {
+    const docs = Object.entries(
+      import.meta.glob<CoordinatedModelDocument>(
+        "../../models/coordinated-models/kx6l-payload0-reach2/joint*.json",
+        { import: "default", eager: true },
+      ),
+    )
+      .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+      .map(([, doc]) => doc);
+    const [left, right] = await Promise.all(
+      [COORDINATED_MODELS, 0].map((model) =>
+        ArmRig.create(
+          mujoco,
+          nodeModule,
+          DEFAULT_SHARED,
+          { damping: DampingMode.network, model },
+          undefined,
+          { latencyCycles: 1 },
+          undefined,
+          docs,
+        ),
+      ),
+    );
+    twin = new TwinRig(left!, right!);
+    twin.run(2 * BUS_CYCLE_HZ);
+    const [withModels, datasheet] = twin.arms.map((arm) => arm.deviation());
+    expect(datasheet!).toBeGreaterThan(0.4e-3);
+    expect(withModels!).toBeLessThan(0.5 * datasheet!);
   });
 
   it("builds the out-of-family test set from the sealed family and names it plainly", async () => {

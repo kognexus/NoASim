@@ -6,6 +6,7 @@ import loadMujoco from "@mujoco/mujoco";
 import nodeWasmUrl from "../../target/wasm32-unknown-unknown/release/nexus_wasm.wasm?url";
 import type { CoordinatedDocument } from "../../sim/src/analysis/estimator.ts";
 import type { BusOptions } from "../../sim/src/bus/ethercatBus.ts";
+import type { CoordinatedModelDocument } from "../../sim/src/node/coordinatedModel.ts";
 import type { PhnnDocument } from "../../sim/src/node/phnnModel.ts";
 import type { Vec3 } from "../../sim/src/plant/armSpec.ts";
 import { BusMonitor, busJointAt, drawBus, rateRows } from "./busView.ts";
@@ -13,6 +14,7 @@ import { StripChart } from "./chart.ts";
 import {
   ArmRig,
   BUS_CYCLE_HZ,
+  COORDINATED_MODELS,
   DampingMode,
   DEFAULT_SHARED,
   type SharedSettings,
@@ -43,6 +45,7 @@ const MODELS: [string, number][] = [
   ["Datasheet model", 0],
   ["Fitted (RLS)", 1],
   ["Learned (PHNN)", 2],
+  ["Coordinated models (learned with neighbours)", COORDINATED_MODELS],
 ];
 
 /** The committed coordinated-damping designs, by arm (NX-30). */
@@ -54,6 +57,21 @@ const COORDINATED: Record<string, CoordinatedDocument> = Object.fromEntries(
     }),
   ).map(([path, doc]) => [path.split("/").pop()?.replace(".json", "") ?? "", doc]),
 );
+/**
+ * The committed coordinated models for the demo's arm as it starts (no payload, NX-31), by
+ * arm: `models/coordinated-models/<arm>-payload0-reach2/joint<n>.json`.
+ */
+const COORDINATED_MODEL_FILES = import.meta.glob<CoordinatedModelDocument>(
+  "../../models/coordinated-models/*-payload0-reach2/joint*.json",
+  { import: "default", eager: true },
+);
+const COORDINATED_MODEL_SETS: Record<string, CoordinatedModelDocument[]> = {};
+for (const [path, doc] of Object.entries(COORDINATED_MODEL_FILES).sort(([a], [b]) =>
+  a.localeCompare(b, undefined, { numeric: true }),
+)) {
+  const arm = path.split("/").at(-2)?.replace("-payload0-reach2", "") ?? "";
+  (COORDINATED_MODEL_SETS[arm] ??= []).push(doc);
+}
 /** Committed per-joint models, by unit (`models/<unit>/joint<n>.json`), loaded on demand. */
 const MODEL_FILES = import.meta.glob<PhnnDocument>("../../models/*/joint*.json", {
   import: "default",
@@ -124,7 +142,16 @@ async function build(): Promise<void> {
   const models = shared.unit === "datasheet" ? undefined : await unitModels(shared.unit);
   const [left, right] = await Promise.all(
     sides.map((side) =>
-      ArmRig.create(mujoco, nodeModule, shared, side, models, bus, COORDINATED[shared.arm]),
+      ArmRig.create(
+        mujoco,
+        nodeModule,
+        shared,
+        side,
+        models,
+        bus,
+        COORDINATED[shared.arm],
+        COORDINATED_MODEL_SETS[shared.arm],
+      ),
     ),
   );
   if (!left || !right) throw new Error("arms not built");

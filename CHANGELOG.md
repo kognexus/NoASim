@@ -52,7 +52,8 @@ All notable changes, one entry per ticket. The format follows
   sag no joint sees alone); on the stiff arm 16–50 %, mostly each joint's own inertia.
   They do not change settling: NX-30's coordinated damping does, and the two combine.
   Joints now publish their commanded reference and their link's predicted bend; tasks
-  start from the references.
+  start from the references. Demo: "Coordinated models" in the model menu, trained for the demo's arm
+  without payload.
 - **NX-30** Coordinated damping in the joints (`Coordinated (while holding)` in the demo):
   each joint runs a Kalman filter on the state frames of the joints up to two places
   away and a gain designed on a model of the arm checked against the simulation. A tap

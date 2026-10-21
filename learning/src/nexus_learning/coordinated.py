@@ -305,7 +305,9 @@ def scores(model: CoordinatedModel, run: ArmRun) -> dict[str, float]:
     return out
 
 
-def export(model: CoordinatedModel, info: list[JointInfo], reach: int) -> dict:
+def export(
+    model: CoordinatedModel, info: list[JointInfo], reach: int, payload: float | None = None
+) -> dict:
     """The frozen model for the node, with probes of its feed-forward."""
     rng = np.random.default_rng(PROBE_SEEDS[0] + model.joint)
     probes = []
@@ -330,6 +332,7 @@ def export(model: CoordinatedModel, info: list[JointInfo], reach: int) -> dict:
         "compliance": model.compliance,
         "bendSplit": BEND_SPLIT,
         "axis": list(info[model.joint].axis),
+        **({} if payload is None else {"payload": payload}),
         "probes": probes,
     }
 
@@ -348,20 +351,38 @@ def main() -> None:
     parser.add_argument(
         "--report", type=Path, default=Path("../experiments/results/coordinated-models.json")
     )
+    parser.add_argument(
+        "--compliance-from",
+        nargs="+",
+        type=Path,
+        default=[],
+        help="datasets (one per dataset, same order) to learn the links' compliance from",
+    )
     args = parser.parse_args()
     report: dict[str, dict] = {}
-    for dataset in args.datasets:
+    for index, dataset in enumerate(args.datasets):
         meta = json.loads((dataset / "meta.json").read_text())
         arm, postures = meta["arm"], meta["postures"]
+        unit, payload = meta.get("unit", arm), meta.get("payload")
         info = read_joints(dataset)
         train = [load_arm_run(dataset, f"{p}-train") for p in postures]
         held = [load_arm_run(dataset, f"{p}-heldout", with_truth=True) for p in postures]
+        # A link's compliance does not depend on what the arm carries, but its bend is only
+        # measurable under enough torque: learned where it is, from another commissioning.
+        source = args.compliance_from[index] if index < len(args.compliance_from) else None
+        bends = None
+        if source is not None:
+            meta_source = json.loads((source / "meta.json").read_text())
+            runs = [load_arm_run(source, f"{p}-train") for p in meta_source["postures"]]
+            bends = [fit_compliance(runs, joint) for joint in range(len(info))]
         for reach in REACHES:
-            out = args.out / f"{arm}-reach{reach}"
+            out = args.out / f"{unit}-reach{reach}"
             out.mkdir(parents=True, exist_ok=True)
             rows = []
             for joint in range(len(info)):
                 model = fit(train, joint, reach)
+                if bends is not None:
+                    model.compliance, model.bend_fit = bends[joint]
                 if reach == 0:
                     # Alone, a joint cannot see its link bend: that takes the next joint's gyro.
                     model.compliance, model.bend_fit = 0.0, 0.0
@@ -377,12 +398,12 @@ def main() -> None:
                     "minOwnInertia": min(s["minOwnInertia"] for s in held_scores),
                 }
                 rows.append(row)
-                doc = export(model, info, reach)
+                doc = export(model, info, reach, payload)
                 (out / f"joint{joint + 1}.json").write_text(json.dumps(doc) + "\n")
                 print(
                     f"{arm} reach {reach} J{joint + 1}: unexplained {row['unexplained']:.3f}, "
                     f"compliance {model.compliance:.3e} (fit {model.bend_fit:.2f})"
                 )
-            report[f"{arm}-reach{reach}"] = {"joints": rows}
+            report[f"{unit}-reach{reach}"] = {"joints": rows}
     args.report.parent.mkdir(parents=True, exist_ok=True)
     args.report.write_text(json.dumps(report, indent=2) + "\n")

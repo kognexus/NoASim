@@ -6,7 +6,7 @@
  * node.
  */
 
-/** The exported JSON (`models/coordinated-models/<arm>-reach<r>/joint<n>.json`). */
+/** The exported JSON (`models/coordinated-models/<unit>-reach<r>/joint<n>.json`). */
 export interface CoordinatedModelDocument {
   readonly format: "nexus-coordinated";
   readonly version: number;
@@ -23,6 +23,8 @@ export interface CoordinatedModelDocument {
   /** Share of its own link's bend the joint takes out. */
   readonly bendSplit: number;
   readonly axis: readonly number[];
+  /** The payload at the tool it was commissioned with, kg (absent in early models). */
+  readonly payload?: number;
   readonly probes: readonly {
     readonly angles: readonly number[];
     readonly accelerations: readonly number[];

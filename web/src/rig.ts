@@ -17,6 +17,7 @@ import type { TaskOptions } from "../../sim/src/host/host.ts";
 import type { Task } from "../../sim/src/host/tasks.ts";
 import { figureEight, pickAndPlace } from "../../sim/src/host/tasks.ts";
 import { BUS_CYCLE_HZ } from "../../sim/src/index.ts";
+import type { CoordinatedModelDocument } from "../../sim/src/node/coordinatedModel.ts";
 import type { PhnnDocument } from "../../sim/src/node/phnnModel.ts";
 import type { ArmSpec, Vec3 } from "../../sim/src/plant/armSpec.ts";
 import { KX6, KX6_HOME, KX6L, withInitialAngles } from "../../sim/src/plant/kx6.ts";
@@ -57,9 +58,12 @@ export interface SharedSettings {
 /** What each arm has on its own; applied live. */
 export interface SideSettings {
   readonly damping: DampingMode;
-  /** 0 nominal, 1 fitted, 2 learned. */
+  /** 0 nominal, 1 fitted, 2 learned, 3 coordinated models (on the nominal one, NX-31). */
   readonly model: number;
 }
+
+/** The model-menu value that switches on the coordinated models (NX-31). */
+export const COORDINATED_MODELS = 3;
 
 export const DEFAULT_SHARED: SharedSettings = {
   arm: "kx6l",
@@ -155,6 +159,7 @@ export class ArmRig {
     models: readonly PhnnDocument[] | undefined,
     bus: BusOptions,
     coordinated?: CoordinatedDocument,
+    coordinatedModels?: readonly CoordinatedModelDocument[],
   ): Promise<ArmRig> {
     const spec = armSpec(shared);
     const hidden = shared.unit !== "datasheet";
@@ -170,6 +175,14 @@ export class ArmRig {
       asDesigned && coordinated
         ? blocksFromDocument(coordinated, nodeConfigsFor(spec, BUS_CYCLE_HZ, gains))
         : undefined;
+    // Likewise the coordinated models (NX-31): learned for this arm, its datasheet
+    // actuators and its payload; otherwise that menu entry is the datasheet model alone.
+    const learnedFor =
+      coordinatedModels !== undefined &&
+      coordinatedModels.length === spec.joints.length &&
+      !hidden &&
+      coordinatedModels.every((d) => d.payload === shared.payload) &&
+      shared.linkStiffness === 1;
     const system = await ArmSystem.create(mujoco, nodeModule, {
       spec,
       seed: hidden ? unitSeed(shared.unit) : 1,
@@ -177,6 +190,7 @@ export class ArmRig {
       bus,
       ...(hidden ? { actuators: actuatorDraw(shared.unit), ...(models ? { models } : {}) } : {}),
       ...(blocks ? { coordinated: blocks } : {}),
+      ...(learnedFor ? { coordinatedModels } : {}),
     });
     system.run(2);
     system.host.applySettings({
@@ -191,7 +205,12 @@ export class ArmRig {
 
   /** Switches damping mode and model, from the next cycle. */
   apply(side: SideSettings): void {
-    this.system.host.applySettings({ damping: side.damping, model: side.model });
+    const coordinated = side.model === COORDINATED_MODELS;
+    this.system.host.applySettings({
+      damping: side.damping,
+      model: coordinated ? 0 : side.model,
+      coordinatedModel: coordinated ? 1 : 0,
+    });
   }
 
   get cycle(): number {
