@@ -12,6 +12,11 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-22** A classic real-time controller as a second kind of robot computer. It runs
+  the task as a program and streams setpoints at 1–4 kHz; the same joints follow it
+  unchanged. Policy computer and classic controller switch task by task, and the
+  classic controller can take over mid-motion after a smooth lead-in. Demo selector
+  "Driven by".
 - **NX-21** README with quick start, what the results show and what they do not;
   architecture, learned-model and limitations pages (`docs/architecture.md`,
   `docs/phnn.md`, `docs/limitations.md`). Licence still to be chosen.

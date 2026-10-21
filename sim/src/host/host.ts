@@ -22,6 +22,8 @@ import { Discovery, type DiscoveryEvents } from "./discovery.ts";
 import {
   CentralInterpolation,
   type CentralOptions,
+  ClassicController,
+  type ClassicOptions,
   type HostLoad,
   JointLevelGoals,
   MotionController,
@@ -32,13 +34,26 @@ import { VlaEmulator, type VlaOptions } from "./vla.ts";
 /** The host re-sends its settings this often, in bus cycles (100 ms). */
 const SETTINGS_REPEAT_CYCLES = 400;
 
-/** How a task's policy steps reach the joints (H2). */
-export type InterpolationMode = "central" | "joint-level";
+/**
+ * Which computer drives the task, and who interpolates.
+ *
+ * - `"joint-level"`: a policy computer (a VLA on a Thor-class machine, 10–50 Hz, with
+ *   latency, jitter and lost steps) sends one goal per policy step; the joints interpolate.
+ * - `"central"`: the same policy computer interpolates itself on a few-hundred-hertz loop
+ *   and streams setpoints (the baseline of H2).
+ * - `"classic"`: a classic real-time robot controller runs the task as a program, samples
+ *   its path on a fixed 1–4 kHz loop and streams a setpoint every tick (NX-22).
+ *
+ * The joints follow setpoints in `"central"` and `"classic"` and interpolate goals in
+ * `"joint-level"`; starting a task switches them (`Settings.interpolation`).
+ */
+export type InterpolationMode = "central" | "joint-level" | "classic";
 
 export interface TaskOptions {
   readonly mode: InterpolationMode;
   readonly vla?: VlaOptions;
   readonly central?: CentralOptions;
+  readonly classic?: ClassicOptions;
 }
 
 export interface HostOptions {
@@ -137,7 +152,7 @@ export class Host {
     });
   }
 
-  /** The running task's policy emulator, if any. */
+  /** The running task, if any. */
   get motion(): MotionController | undefined {
     return this.#motion;
   }
@@ -148,6 +163,19 @@ export class Host {
       (joint, i) => this.jointAngles.get(i + 1) ?? joint.initialAngle,
     );
     const time = cycle / BUS_CYCLE_HZ;
+    this.applySettings({ interpolation: options.mode === "joint-level" ? 1 : 0 });
+    if (options.mode === "classic") {
+      const strategy = new ClassicController(
+        this.#spec,
+        task,
+        start,
+        time,
+        this.load,
+        options.classic,
+      );
+      this.#motion = new MotionController(undefined, strategy);
+      return this.#motion;
+    }
     const vla = new VlaEmulator(
       task,
       time,
@@ -165,7 +193,6 @@ export class Host {
             options.central,
           )
         : new JointLevelGoals(this.#spec, start, time, this.load);
-    this.applySettings({ interpolation: options.mode === "central" ? 0 : 1 });
     this.#motion = new MotionController(vla, strategy);
     return this.#motion;
   }

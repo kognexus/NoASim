@@ -72,7 +72,7 @@ export function followTask(
     jerkRms: rms(jerk),
     pathErrorRms: rms(error),
     pathErrorMax: Math.max(...error),
-    droppedSteps: motion.vla.dropped,
+    droppedSteps: motion.vla?.dropped ?? 0,
   };
 }
 

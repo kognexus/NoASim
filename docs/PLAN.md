@@ -274,10 +274,13 @@ you say so.
 | **NX-19** | Experiment runner + proof report | `npm run prove` is deterministic; scenario matrix (mode × model × disturbance × posture × latency × seed); H1 to H10 as tests; SVG plots; `docs/RESULTS.md` |
 | **NX-20** | Interactive web demo | Twin arms side by side with the same disturbance; mode selector; model selector (Nominal / RLS / PHNN); impact-policy selector and brake toggles; ACK button; latency, jitter and drop sliders; click a joint to inject ripple, shaker, tap, impact or bearing fault; arm editor; live plots; bus view with message flow and event log; E-STOP and reset |
 | **NX-21** | Docs + polish | README with GIF and quick start; architecture, PHNN and limitations pages; CHANGELOG; licence; clean history |
+| **NX-22** | Policy computer or classic controller (added 21 Oct, after review) | A host profile for a classic real-time controller that streams setpoints at 1–4 kHz next to the VLA policy computer; switching between them by task, and a mid-motion takeover, without a jump; demo selector |
+| **NX-23** | Damping leaves commanded motion alone (added 21 Oct, after review) | Damping signals relative to the joint's own reference velocity, so damped arms track tasks at least as well as undamped ones; demo chart legend; results re-measured |
+| **NX-24** | Demo for comparison (added 21 Oct, after review) | Both 3D views share one camera; each arm's charts under its view on shared scales; a chart of the vibration each joint feels; help tooltips on every control |
 
 Order: NX-00 → 01 (the spike; it can change the plan) → 02 to 12 in order → 13 to 15 (PHNN)
 → 16 to 18 → 19 → 20 → 21. NX-20 can start once NX-11 lands, so the demo grows with the
-features.
+features. NX-22 to NX-24 were added after the owner's first review.
 
 **Modelling choice (decided 20 Oct).** Stabilisation is port-Hamiltonian in structure. The
 joint's model of itself is learned (a PHNN), because the claim is that the unit doesn't need

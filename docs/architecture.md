@@ -65,6 +65,16 @@ nodes once per 250 µs cycle. The host discovers the nodes, sends limits and set
 turns a policy's tool goals into joint goals. It never damps, detects, attributes or
 interpolates for the joints (except in the "central interpolation" baseline of H2).
 
+The host can play two kinds of robot computer, chosen per task (`InterpolationMode`):
+- a **policy computer**: a VLA on a Thor-class machine, sending sparse goals at 10–50 Hz
+  with latency, jitter and lost steps, which the joints interpolate;
+- a **classic controller**: a deterministic real-time computer that runs the task as a
+  program and streams a setpoint to every joint at 1–4 kHz, which the joints follow.
+
+Starting a task switches the joints between the two through the settings frame. A
+classic controller first moves to its program's start, so it can also take over
+mid-motion (NX-22).
+
 ## Learning
 
 `learning/` (Python) trains each joint's model of itself from that joint's own
