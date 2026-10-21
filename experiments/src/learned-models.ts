@@ -13,7 +13,8 @@
  *
  *   node experiments/src/learned-models.ts [units=kx6-s300,kx6-s301,kx6-s302]
  *
- * Writes experiments/results/learned-models.json.
+ * Writes experiments/results/learned-models.json. `npm run prove` calls
+ * {@link measureLearnedModels}.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { DampingMode } from "../../sim/src/bus/protocol.ts";
@@ -27,18 +28,18 @@ import { dampingWork } from "../../sim/src/scenarios/energy.ts";
 import { followTask, homePose } from "../../sim/src/scenarios/motion.ts";
 import { tapTest } from "../../sim/src/scenarios/tap.ts";
 import { Random } from "../../sim/src/util/random.ts";
-import { openLab, unitModels, withArm } from "./runner.ts";
+import { type Lab, openLab, unitModels, withArm } from "./runner.ts";
 
-const units = (process.argv[2] ?? "kx6-s300,kx6-s301,kx6-s302").split(",");
+/** The units of hidden actuators with committed learned models. */
+export const UNITS = ["kx6-s300", "kx6-s301", "kx6-s302"];
 const spec = withInitialAngles(KX6, KX6_HOME);
 const gains = tunedGains("kx6", "network");
-const lab = await openLab();
 
 /** Settings byte of each model (`ModelChoice`). */
 const MODEL_BYTE = { nominal: 0, fitted: 1, learned: 2 } as const;
 type ModelName = keyof typeof MODEL_BYTE;
 
-interface Outcome {
+export interface Outcome {
   /**
    * How far the joints stray, during slow sweeps, from where the same arm with datasheet
    * actuators goes: what the unknown actuators do that the model does not cancel. RMS over
@@ -125,32 +126,11 @@ function trial(system: ArmSystem, model: ModelName): { outcome: Measured; sweep:
   };
 }
 
-const fmt = (o: Outcome) =>
+export const fmt = (o: Outcome) =>
   `sweep ${o.sweepDeviationMrad.toFixed(3)} mrad  eight ${o.figureEightMm.toFixed(2)} mm` +
   `  pick ${o.pickAndPlaceMm.toFixed(2)} mm  tap ${o.tapSettleS.toFixed(3)} s` +
   ` / ${o.tapPeakMm.toFixed(1)} mm, tail ${o.tapTailMm.toFixed(3)} mm  work ${o.maxDampingWorkJ.toFixed(4)} J`;
 
-// ---- H10b -------------------------------------------------------------------------------
-const h10b: Record<string, Record<string, Outcome>> = {};
-const references: Record<string, number[][]> = {};
-for (const unit of units) {
-  const seed = Number(unit.split("-s").pop());
-  const models = await unitModels(unit, spec.joints.length);
-  const oracle = await withArm(lab, { spec, gains, seed }, (s) => trial(s, "nominal"));
-  references[unit] = oracle.sweep;
-  const rows: Record<string, Outcome> = { oracle: { ...oracle.outcome, sweepDeviationMrad: 0 } };
-  console.log(`H10b ${unit} ${"oracle".padEnd(8)} ${fmt(rows.oracle!)}  (datasheet actuators)`);
-  for (const model of Object.keys(MODEL_BYTE) as ModelName[]) {
-    const run = await withArm(lab, { spec, gains, seed, actuators: {}, models }, (s) =>
-      trial(s, model),
-    );
-    rows[model] = { ...run.outcome, sweepDeviationMrad: 1e3 * deviation(run.sweep, oracle.sweep) };
-    console.log(`H10b ${unit} ${model.padEnd(8)} ${fmt(rows[model])}`);
-  }
-  h10b[unit] = rows;
-}
-
-// ---- H10d -------------------------------------------------------------------------------
 function mapLayers(layers: readonly Layer[], f: (w: number) => number): Layer[] {
   return layers.map((l) => ({ weight: l.weight.map((row) => row.map(f)), bias: l.bias.map(f) }));
 }
@@ -183,26 +163,69 @@ const CORRUPTIONS: Record<string, (doc: PhnnDocument, rng: Random) => PhnnDocume
   },
 };
 
-const h10d: Record<string, Outcome> = {};
-{
-  const unit = units[0] ?? "kx6-s300";
-  const seed = Number(unit.split("-s").pop());
-  const models = await unitModels(unit, spec.joints.length);
-  for (const [name, corrupt] of Object.entries(CORRUPTIONS)) {
-    const rng = new Random(77);
-    const broken = models.map((doc) => corrupt(doc, rng));
-    const run = await withArm(lab, { spec, gains, seed, actuators: {}, models: broken }, (s) =>
-      trial(s, "learned"),
-    );
-    const reference = references[unit] ?? run.sweep;
-    const outcome = { ...run.outcome, sweepDeviationMrad: 1e3 * deviation(run.sweep, reference) };
-    h10d[name] = outcome;
-    console.log(`H10d ${unit} ${name.padEnd(22)} ${fmt(outcome)}`);
-  }
+export interface LearnedModels {
+  readonly h10b: Record<string, Record<string, Outcome>>;
+  readonly h10d: Record<string, Outcome>;
 }
 
-await mkdir(new URL("../results/", import.meta.url), { recursive: true });
-await writeFile(
-  new URL("../results/learned-models.json", import.meta.url),
-  `${JSON.stringify({ h10b, h10d }, null, 2)}\n`,
-);
+/**
+ * H10b on every unit of `units`, then H10d (broken models) on the first. Each unit's
+ * reference is the same arm with datasheet actuators.
+ */
+export async function measureLearnedModels(
+  lab: Lab,
+  units: readonly string[] = UNITS,
+  log: (line: string) => void = console.log,
+): Promise<LearnedModels> {
+  const h10b: Record<string, Record<string, Outcome>> = {};
+  const references: Record<string, number[][]> = {};
+  for (const unit of units) {
+    const seed = Number(unit.split("-s").pop());
+    const models = await unitModels(unit, spec.joints.length);
+    const oracle = await withArm(lab, { spec, gains, seed }, (s) => trial(s, "nominal"));
+    references[unit] = oracle.sweep;
+    const reference = { ...oracle.outcome, sweepDeviationMrad: 0 };
+    const rows: Record<string, Outcome> = { oracle: reference };
+    log(`H10b ${unit} ${"oracle".padEnd(8)} ${fmt(reference)}  (datasheet actuators)`);
+    for (const model of Object.keys(MODEL_BYTE) as ModelName[]) {
+      const run = await withArm(lab, { spec, gains, seed, actuators: {}, models }, (s) =>
+        trial(s, model),
+      );
+      rows[model] = {
+        ...run.outcome,
+        sweepDeviationMrad: 1e3 * deviation(run.sweep, oracle.sweep),
+      };
+      log(`H10b ${unit} ${model.padEnd(8)} ${fmt(rows[model])}`);
+    }
+    h10b[unit] = rows;
+  }
+
+  const h10d: Record<string, Outcome> = {};
+  {
+    const unit = units[0] ?? "kx6-s300";
+    const seed = Number(unit.split("-s").pop());
+    const models = await unitModels(unit, spec.joints.length);
+    for (const [name, corrupt] of Object.entries(CORRUPTIONS)) {
+      const rng = new Random(77);
+      const broken = models.map((doc) => corrupt(doc, rng));
+      const run = await withArm(lab, { spec, gains, seed, actuators: {}, models: broken }, (s) =>
+        trial(s, "learned"),
+      );
+      const reference = references[unit] ?? run.sweep;
+      const outcome = { ...run.outcome, sweepDeviationMrad: 1e3 * deviation(run.sweep, reference) };
+      h10d[name] = outcome;
+      log(`H10d ${unit} ${name.padEnd(22)} ${fmt(outcome)}`);
+    }
+  }
+  return { h10b, h10d };
+}
+
+if (import.meta.main) {
+  const units = (process.argv[2] ?? UNITS.join(",")).split(",");
+  const { h10b, h10d } = await measureLearnedModels(await openLab(), units);
+  await mkdir(new URL("../results/", import.meta.url), { recursive: true });
+  await writeFile(
+    new URL("../results/learned-models.json", import.meta.url),
+    `${JSON.stringify({ h10b, h10d }, null, 2)}\n`,
+  );
+}

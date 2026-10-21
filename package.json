@@ -17,7 +17,8 @@
     "board": "node tools/board.mjs",
     "format": "cargo fmt --all && prettier --write .",
     "bench:step": "npm run build:wasm && node sim/bench/stepCost.ts",
-    "check:py": "cd learning && uv run ruff format --check . && uv run ruff check . && uv run pytest -q"
+    "check:py": "cd learning && uv run ruff format --check . && uv run ruff check . && uv run pytest -q",
+    "prove": "npm run build:wasm && node experiments/src/prove.ts"
   },
   "engines": {
     "node": ">=22"

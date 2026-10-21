@@ -1,0 +1,16 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 720 320' width='720' height='320' font-family='system-ui, -apple-system, Segoe UI, sans-serif'>
+<rect width='720' height='320' fill='#ffffff'/>
+<text x='16' y='24' font-size='15' font-weight='600' fill='#1c2129'>Joints' deviation from the datasheet-actuator arm during slow sweeps</text>
+<line x1='64' x2='704' y1='268' y2='268' stroke='#e4e7eb'/><text x='56' y='272' font-size='11' text-anchor='end' fill='#5d6673'>0.0</text>
+<line x1='64' x2='704' y1='215' y2='215' stroke='#e4e7eb'/><text x='56' y='219' font-size='11' text-anchor='end' fill='#5d6673'>1.3</text>
+<line x1='64' x2='704' y1='162' y2='162' stroke='#e4e7eb'/><text x='56' y='166' font-size='11' text-anchor='end' fill='#5d6673'>2.5</text>
+<line x1='64' x2='704' y1='109' y2='109' stroke='#e4e7eb'/><text x='56' y='113' font-size='11' text-anchor='end' fill='#5d6673'>3.8</text>
+<line x1='64' x2='704' y1='56' y2='56' stroke='#e4e7eb'/><text x='56' y='60' font-size='11' text-anchor='end' fill='#5d6673'>5.0</text>
+<rect x='116.7' y='260.7' width='33.0' height='7.3' rx='2' fill='#2f6fd6'/><rect x='152.7' y='252.6' width='33.0' height='15.4' rx='2' fill='#d9822b'/><rect x='188.7' y='263.3' width='33.0' height='4.7' rx='2' fill='#3f8f6b'/><text x='170.7' y='286' font-size='11' text-anchor='middle' fill='#1c2129'>kx6-s300</text>
+<rect x='330.0' y='260.2' width='33.0' height='7.8' rx='2' fill='#2f6fd6'/><rect x='366.0' y='164.4' width='33.0' height='103.6' rx='2' fill='#d9822b'/><rect x='402.0' y='263.5' width='33.0' height='4.5' rx='2' fill='#3f8f6b'/><text x='384.0' y='286' font-size='11' text-anchor='middle' fill='#1c2129'>kx6-s301</text>
+<rect x='543.3' y='258.6' width='33.0' height='9.4' rx='2' fill='#2f6fd6'/><rect x='579.3' y='173.4' width='33.0' height='94.6' rx='2' fill='#d9822b'/><rect x='615.3' y='263.1' width='33.0' height='4.9' rx='2' fill='#3f8f6b'/><text x='597.3' y='286' font-size='11' text-anchor='middle' fill='#1c2129'>kx6-s302</text>
+<text x='14' y='46' font-size='12' fill='#5d6673'>mrad RMS</text>
+<rect x='64' y='35' width='12' height='12' rx='2' fill='#2f6fd6'/><text x='82' y='45' font-size='12' fill='#1c2129'>datasheet model</text>
+<rect x='214' y='35' width='12' height='12' rx='2' fill='#d9822b'/><text x='232' y='45' font-size='12' fill='#1c2129'>online RLS fit</text>
+<rect x='364' y='35' width='12' height='12' rx='2' fill='#3f8f6b'/><text x='382' y='45' font-size='12' fill='#1c2129'>learned model</text>
+</svg>

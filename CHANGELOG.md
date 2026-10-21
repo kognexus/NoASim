@@ -12,6 +12,11 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-19** `npm run prove`: one module per group of hypotheses, each measured from fixed
+  seeds and compared with its target in code, writing `docs/RESULTS.md` with SVG plots.
+  Met: H3a–H3d, H4, H5, H6, H10b–H10d. Partly met: H2, H7, H9, H10a. Not met: H1 (2.0–2.5×
+  vs off, about even with joint-local damping). The learned models are re-scored, not
+  retrained (`nexus-train --evaluate`).
 - **NX-20** Interactive demo (`npm run dev -w web`): two arms side by side, drawn from
   their MuJoCo models with three.js, the same disturbances at the same cycle. Damping
   mode and model per arm, switched live. Tasks; tap, shake and collide; a click on a joint

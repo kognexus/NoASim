@@ -2,6 +2,9 @@
 
     uv run nexus-train ../experiments/results/commissioning/kx6-s300 [more datasets]
         [--out ../models] [--report ../experiments/results/phnn.json] [--epochs N]
+        [--evaluate]
+
+With ``--evaluate`` the committed weights are scored instead of trained (npm run prove).
 
 For every joint of every dataset: train on the training run, then score Nominal, Fitted,
 PHNN and Oracle on the held-out run (RMS of the smoothed torque-balance residual), check
@@ -22,7 +25,7 @@ import torch
 
 from .baselines import FittedModel, nominal_residual, oracle_residual, score
 from .data import NARROW_HZ, Run, load_run, read_meta, read_truth_info, smoothing_kernel
-from .export import export_weights
+from .export import export_weights, load_weights
 from .phnn import JointPHNN
 
 #: Version of the exported weight format and training recipe.
@@ -103,13 +106,21 @@ def energy_check(model: JointPHNN, run: Run) -> dict[str, float]:
     }
 
 
-def evaluate(dataset: Path, joint: int, epochs: int) -> tuple[dict, JointPHNN]:
-    """Trains joint ``joint`` of ``dataset`` and scores every model on its held-out run."""
+def evaluate(
+    dataset: Path, joint: int, epochs: int, frozen: Path | None = None
+) -> tuple[dict, JointPHNN]:
+    """Scores every model on joint ``joint``'s held-out run of ``dataset``.
+
+    The PHNN is trained on the training run, or read from ``frozen`` (exported weights).
+    """
     train_run = load_run(dataset, joint, "train")
     heldout = load_run(dataset, joint, "heldout", with_truth=True)
     info = read_truth_info(dataset)
     started = time.time()
-    model, losses = train(train_run, epochs)
+    if frozen is None:
+        model, losses = train(train_run, epochs)
+    else:
+        model, losses = load_weights(frozen, train_run.meta), [math.nan]
     phnn = model.residual(tensors(heldout)).detach().numpy()
     hz = heldout.meta.cycle_hz
     residuals = {
@@ -154,6 +165,17 @@ def family_summary(results: list[dict]) -> dict[str, dict]:
     return summary
 
 
+def finite(value: object) -> object:
+    """``value`` with NaN and infinities replaced by None, so the report is valid JSON."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: finite(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [finite(v) for v in value]
+    return value
+
+
 def main() -> None:
     """Command-line entry point."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -162,6 +184,11 @@ def main() -> None:
     parser.add_argument("--report", type=Path, default=Path("../experiments/results/phnn.json"))
     parser.add_argument("--epochs", type=int, default=1500)
     parser.add_argument("--joints", type=str, default="", help="comma-separated, default all")
+    parser.add_argument(
+        "--evaluate",
+        action="store_true",
+        help="score the weights already in --out instead of training (deterministic)",
+    )
     args = parser.parse_args()
     results = []
     for dataset in args.datasets:
@@ -169,9 +196,10 @@ def main() -> None:
             m.joint for m in read_meta(dataset)
         ]
         for joint in joints:
-            result, model = evaluate(dataset, joint, args.epochs)
             path = args.out / dataset.name / f"joint{joint}.json"
-            export_weights(model, path, MODEL_VERSION, dataset.name)
+            result, model = evaluate(dataset, joint, args.epochs, path if args.evaluate else None)
+            if not args.evaluate:
+                export_weights(model, path, MODEL_VERSION, dataset.name)
             results.append(result)
             s = result["scores"]
             print(
@@ -188,10 +216,8 @@ def main() -> None:
             f"  PHNN closes {s['phnnGapClosed']:.0%}, fitted {s['fittedGapClosed']:.0%}"
         )
     args.report.parent.mkdir(parents=True, exist_ok=True)
-    args.report.write_text(
-        json.dumps({"version": MODEL_VERSION, "results": results, "families": summary}, indent=2)
-        + "\n"
-    )
+    report = {"version": MODEL_VERSION, "results": results, "families": summary}
+    args.report.write_text(json.dumps(finite(report), indent=2, allow_nan=False) + "\n")
 
 
 if __name__ == "__main__":

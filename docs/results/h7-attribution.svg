@@ -1,0 +1,17 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 720 320' width='720' height='320' font-family='system-ui, -apple-system, Segoe UI, sans-serif'>
+<rect width='720' height='320' fill='#ffffff'/>
+<text x='16' y='24' font-size='15' font-weight='600' fill='#1c2129'>Blinded attribution trials</text>
+<line x1='64' x2='704' y1='268' y2='268' stroke='#e4e7eb'/><text x='56' y='272' font-size='11' text-anchor='end' fill='#5d6673'>0.0</text>
+<line x1='64' x2='704' y1='215' y2='215' stroke='#e4e7eb'/><text x='56' y='219' font-size='11' text-anchor='end' fill='#5d6673'>25</text>
+<line x1='64' x2='704' y1='162' y2='162' stroke='#e4e7eb'/><text x='56' y='166' font-size='11' text-anchor='end' fill='#5d6673'>50</text>
+<line x1='64' x2='704' y1='109' y2='109' stroke='#e4e7eb'/><text x='56' y='113' font-size='11' text-anchor='end' fill='#5d6673'>75</text>
+<line x1='64' x2='704' y1='56' y2='56' stroke='#e4e7eb'/><text x='56' y='60' font-size='11' text-anchor='end' fill='#5d6673'>100</text>
+<rect x='90.0' y='56.0' width='33.0' height='212.0' rx='2' fill='#2f6fd6'/><rect x='126.0' y='268.0' width='33.0' height='0.0' rx='2' fill='#d9822b'/><rect x='162.0' y='268.0' width='33.0' height='0.0' rx='2' fill='#3f8f6b'/><text x='144.0' y='286' font-size='11' text-anchor='middle' fill='#1c2129'>datasheet actuators, network (100)</text>
+<rect x='250.0' y='56.0' width='33.0' height='212.0' rx='2' fill='#2f6fd6'/><rect x='286.0' y='268.0' width='33.0' height='0.0' rx='2' fill='#d9822b'/><rect x='322.0' y='268.0' width='33.0' height='0.0' rx='2' fill='#3f8f6b'/><text x='304.0' y='286' font-size='11' text-anchor='middle' fill='#1c2129'>datasheet actuators, alone (100)</text>
+<rect x='410.0' y='219.2' width='33.0' height='48.8' rx='2' fill='#2f6fd6'/><rect x='446.0' y='255.3' width='33.0' height='12.7' rx='2' fill='#d9822b'/><rect x='482.0' y='265.9' width='33.0' height='2.1' rx='2' fill='#3f8f6b'/><text x='464.0' y='286' font-size='11' text-anchor='middle' fill='#1c2129'>hidden, datasheet residual (30)</text>
+<rect x='570.0' y='206.5' width='33.0' height='61.5' rx='2' fill='#2f6fd6'/><rect x='606.0' y='265.9' width='33.0' height='2.1' rx='2' fill='#d9822b'/><rect x='642.0' y='268.0' width='33.0' height='0.0' rx='2' fill='#3f8f6b'/><text x='624.0' y='286' font-size='11' text-anchor='middle' fill='#1c2129'>hidden, learned residual (30)</text>
+<text x='14' y='46' font-size='12' fill='#5d6673'>trials</text>
+<rect x='64' y='35' width='12' height='12' rx='2' fill='#2f6fd6'/><text x='82' y='45' font-size='12' fill='#1c2129'>source named, alone</text>
+<rect x='214' y='35' width='12' height='12' rx='2' fill='#d9822b'/><text x='232' y='45' font-size='12' fill='#1c2129'>another joint also claims</text>
+<rect x='364' y='35' width='12' height='12' rx='2' fill='#3f8f6b'/><text x='382' y='45' font-size='12' fill='#1c2129'>nobody claims</text>
+</svg>
