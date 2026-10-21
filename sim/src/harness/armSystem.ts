@@ -94,6 +94,12 @@ export class ArmSystem {
    * de-energised, whatever the bus does. It stays pulled until {@link resetSafeTorqueOff}.
    */
   safeTorqueOff = false;
+  /**
+   * Torque a controller outside the joints adds to each joint's command, N·m, asked for
+   * once per cycle after the nodes have ticked. Experiments only: the ideal reference
+   * controller of NX-27, which sees the plant's whole state. No node can do this.
+   */
+  outsideTorque: ((system: ArmSystem) => readonly number[]) | undefined;
 
   private constructor(
     plant: Plant,
@@ -209,9 +215,10 @@ export class ArmSystem {
       if (out.safeTorqueOff) this.safeTorqueOff = true;
     }
     this.bus.send(HOST_PORT, this.host.tick(cycle, this.bus.receive(HOST_PORT, cycle)), cycle);
+    const outside = this.outsideTorque?.(this);
     for (const j of this.joints) {
       const actuator = plant.spec.joints[j.index]?.actuator;
-      const command = this.safeTorqueOff ? 0 : j.commandTorque;
+      const command = this.safeTorqueOff ? 0 : j.commandTorque + (outside?.[j.index] ?? 0);
       const out = j.physics.update(command, plant.actuatorState(j.index), dt);
       j.current = out.current;
       j.actuatorOutput = out;

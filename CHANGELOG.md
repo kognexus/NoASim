@@ -32,6 +32,11 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-27** Headroom for learned damping: an ideal controller that sees the whole plant
+  state with no delay (an LQR on the linearised arm, held to the joints' torque and
+  energy budget) holds the tool 2.9–3.7× closer after a tap than network damping. The
+  advantage is coordination on the whole state, not speed or passivity; the
+  recommendation is a model-based coordinated damper before reinforcement learning.
 - **NX-26** Budget and premium actuator grades, with phase-current sensing errors
   (offset: ripple once per electrical turn; gain mismatch: twice). Learned models now
   include the electrical orders (premium closes 101 % of the gap instead of 37 %).

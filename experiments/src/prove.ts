@@ -1,8 +1,8 @@
 /**
- * `npm run prove`: measures every hypothesis of the plan (H1–H10), and the actuator grades
- * (NX-26), from the code in this
- * repository and writes docs/RESULTS.md with SVG plots in docs/results/. Deterministic:
- * every run uses fixed seeds, and the learned models are the committed ones.
+ * `npm run prove`: measures every hypothesis of the plan (H1–H10), the actuator grades
+ * (NX-26) and the headroom for learned damping (NX-27), from the code in this repository,
+ * and writes docs/RESULTS.md with SVG plots in docs/results/. Deterministic: every run
+ * uses fixed seeds, and the learned models are the committed ones.
  *
  *   node experiments/src/prove.ts [--quick] [--only H1,H7]
  *
@@ -20,6 +20,7 @@ import { h5h7 } from "./prove/h5.ts";
 import { h6 } from "./prove/h6.ts";
 import { grades } from "./prove/grades.ts";
 import { h9 } from "./prove/h9.ts";
+import { headroom } from "./prove/headroom.ts";
 import { openLab } from "./runner.ts";
 
 const quick = process.argv.includes("--quick");
@@ -53,6 +54,7 @@ const STEPS: [string[], () => Promise<Finding | Finding[]>][] = [
   [["H10a", "H10c"], () => h10ac(ctx)],
   [["H10b", "H10d"], () => h10bd(ctx)],
   [["Grades"], () => grades(ctx)],
+  [["Headroom"], () => headroom(ctx)],
 ];
 
 const ORDER = [
@@ -73,6 +75,7 @@ const ORDER = [
   "H10c",
   "H10d",
   "Grades",
+  "Headroom",
 ];
 const findings: Finding[] = [];
 for (const [ids, step] of STEPS) {

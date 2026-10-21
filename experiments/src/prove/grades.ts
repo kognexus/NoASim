@@ -17,6 +17,10 @@ export async function grades(ctx: ProveContext): Promise<Finding> {
   const premium = r.premium;
   const vibrationCut = (g: GradeOutcome | undefined) =>
     g ? 1 - g.damping.network.vibrationDegS / g.damping.off.vibrationDegS : Number.NaN;
+  const change = (g: GradeOutcome | undefined) => {
+    const cut = vibrationCut(g);
+    return `${cut >= 0 ? "−" : "+"}${Math.abs(100 * cut).toFixed(0)} %`;
+  };
   const sweepGain = (g: GradeOutcome | undefined) =>
     g?.models.nominal && g.models.learned
       ? g.models.nominal.sweepMrad / g.models.learned.sweepMrad
@@ -27,8 +31,8 @@ export async function grades(ctx: ProveContext): Promise<Finding> {
     target:
       "Reported (NX-26): how each grade behaves, and what the network and the learned models change",
     measured:
-      `network damping cuts task vibration ${(100 * vibrationCut(premium)).toFixed(0)} % (premium), ` +
-      `${(100 * vibrationCut(budget)).toFixed(0)} % (budget); learned models cut sweep deviation ` +
+      `network damping changes task vibration by ${change(premium)} (premium), ` +
+      `${change(budget)} (budget); learned models cut sweep deviation ` +
       `${f2(sweepGain(premium))}× (premium), ${f2(sweepGain(budget))}× (budget)`,
     verdict: "reported",
     detail: [

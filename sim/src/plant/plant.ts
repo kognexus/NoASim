@@ -167,6 +167,35 @@ export class Plant {
     return this.motorVelocity(i) + this.#qvel(this.#joint(i).gearDof);
   }
 
+  /**
+   * The whole mechanical state, `[qpos…, qvel…]`, as a copy (NX-27: linearising, and the
+   * ideal reference controller). Every degree of freedom is a hinge or a slide, so
+   * position `k` and velocity `k` belong to the same coordinate.
+   */
+  state(): Float64Array {
+    const qpos = this.#data.qpos as Float64Array;
+    const qvel = this.#data.qvel as Float64Array;
+    const x = new Float64Array(qpos.length + qvel.length);
+    x.set(qpos);
+    x.set(qvel, qpos.length);
+    return x;
+  }
+
+  /** Puts the plant in state `x` (from {@link state}). */
+  setState(x: Float64Array): void {
+    const qpos = this.#data.qpos as Float64Array;
+    const qvel = this.#data.qvel as Float64Array;
+    qpos.set(x.subarray(0, qpos.length));
+    qvel.set(x.subarray(qpos.length, qpos.length + qvel.length));
+    this.#mujoco.mj_forward(this.#model, this.#data);
+  }
+
+  /** Where joint `i`'s motor, gear and bending coordinates sit in {@link state}. */
+  coordinates(i: number): { motor: number; gear: number; bend: readonly number[] } {
+    const adr = this.#joint(i);
+    return { motor: adr.motorQpos, gear: adr.gearQpos, bend: adr.bendQpos };
+  }
+
   /** Bending angles of link `i` (two axes), rad; empty for a rigid link. */
   linkBend(i: number): number[] {
     return this.#joint(i).bendQpos.map((adr) => this.#qpos(adr));

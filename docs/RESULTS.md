@@ -22,9 +22,11 @@ reported as missed.
 | H8 | Work moves off the host | Reported (no target) | host computations per second, central / joint-level (below) | · reported |
 | H9 | Each joint computes gravity correctly from its own IMU | Torque error ≤ 1 % of rated; drift with tilt clearly lower than a fixed-vertical model; payload within ±5 % | 3/6 joints within 1 %; tilt drift 0.37 vs 4.93 mm; payload 10 % | ◐ partly met |
 | H10a | A PHNN learns an actuator nobody described | On the sealed out-of-family actuator: closes ≥ 70 % of the Nominal-to-Oracle gap and beats RLS | sealed: 61 % of the gap closed; RLS structure -5 % | ◐ partly met |
-| H10b | The learned model improves the arm | PHNN measurably better than RLS; reported against Oracle | slow-sweep deviation from the datasheet-actuator arm: learned 0.108, datasheet 0.190, RLS 1.681 mrad (mean of 3 units) | ✔ met |
+| H10b | The learned model improves the arm | PHNN measurably better than RLS; reported against Oracle | slow-sweep deviation from the datasheet-actuator arm: learned 0.150, datasheet 0.190, RLS 1.681 mrad (mean of 3 units) | ✔ met |
 | H10c | The learned model is passive | Energy balance dH/dt ≤ input power on held-out trajectories; holds by construction, checked numerically | dissipation never negative (smallest 3.0e-11 W); balance closes to 1.4e-14 W on 24 joints | ✔ met |
 | H10d | A wrong model can't destabilise the arm | Closed loop with a deliberately corrupted or mismatched model: never unstable; the energy tank caps the network term | bounded in every case: yes; network term within its tank: yes | ✔ met |
+| Grades | Budget and premium actuators | Reported (NX-26): how each grade behaves, and what the network and the learned models change | network damping changes task vibration by −8 % (premium), +9 % (budget); learned models cut sweep deviation 1.98× (premium), 6.19× (budget) | · reported |
+| Headroom | Headroom for learned damping | Reported (NX-27): how much better any damping could do after a tap | KX-6L: ideal 2.9× lower mean distance than network; KX-6: ideal 3.7× lower mean distance than network | · reported |
 
 ## H1: Networked damping settles vibration faster
 
@@ -246,7 +248,7 @@ The sealed family (LuGre friction with an internal state, an eccentric gear) was
 ## H10b: The learned model improves the arm
 
 **Target:** PHNN measurably better than RLS; reported against Oracle  
-**Measured:** slow-sweep deviation from the datasheet-actuator arm: learned 0.108, datasheet 0.190, RLS 1.681 mrad (mean of 3 units)  
+**Measured:** slow-sweep deviation from the datasheet-actuator arm: learned 0.150, datasheet 0.190, RLS 1.681 mrad (mean of 3 units)  
 **Verdict:** ✔ met
 
 Each unit is a KX-6 with hidden actuators and its committed models. The headline is how far the joints stray, during slow sweeps, from the same arm with datasheet actuators (the reference); task path errors and tap settling are shown for context.
@@ -256,15 +258,15 @@ Each unit is a KX-6 with hidden actuators and its committed models. The headline
 | kx6-s300 | reference (datasheet actuators) | 0.000 | 2.52 | 1.90 | 0.279 |
 | kx6-s300 | nominal | 0.170 | 2.55 | 1.93 | 0.294 |
 | kx6-s300 | fitted | 0.353 | 2.51 | 1.93 | 0.294 |
-| kx6-s300 | learned | 0.109 | 2.50 | 1.92 | 0.291 |
+| kx6-s300 | learned | 0.168 | 2.50 | 1.93 | 0.291 |
 | kx6-s301 | reference (datasheet actuators) | 0.000 | 2.09 | 2.19 | 0.274 |
 | kx6-s301 | nominal | 0.180 | 2.13 | 2.22 | 0.252 |
 | kx6-s301 | fitted | 2.451 | 2.12 | 2.23 | 0.253 |
-| kx6-s301 | learned | 0.104 | 2.11 | 2.23 | 0.272 |
+| kx6-s301 | learned | 0.144 | 2.11 | 2.24 | 0.272 |
 | kx6-s302 | reference (datasheet actuators) | 0.000 | 2.13 | 3.21 | 0.275 |
 | kx6-s302 | nominal | 0.219 | 2.20 | 3.20 | 0.292 |
 | kx6-s302 | fitted | 2.240 | 2.17 | 3.27 | 0.290 |
-| kx6-s302 | learned | 0.111 | 2.17 | 3.23 | 0.325 |
+| kx6-s302 | learned | 0.139 | 2.17 | 3.23 | 0.321 |
 
 The H1 tap and H2 tasks barely change with any model: the stiff output-encoder servo already rejects most of what the actuators do differently. Where friction matters (slow motion), the learned feed-forward brings the arm closest to the reference; the online RLS fit chases what its structure cannot represent and can end worse than the datasheet.
 
@@ -288,10 +290,67 @@ Unit kx6-s300, every joint's learned model broken the same way:
 
 | Corruption | Sweep deviation, mrad | Figure of eight, mm | Tap settling | Rest motion after the tap, mm |
 |---|---|---|---|---|
-| friction x5 | 1.370 | 2.38 | 0.290 s | 0.012 |
-| cogging x-10 | 0.625 | 2.71 | 0.165 s | 0.011 |
-| noise on every weight | 0.231 | 2.49 | 0.290 s | 0.013 |
+| friction x5 | 1.377 | 2.38 | 0.291 s | 0.012 |
+| cogging x-10 | 0.747 | 2.71 | 0.162 s | 0.012 |
+| noise on every weight | 10.205 | 8.11 | 0.484 s | 0.161 |
 
 Never unstable, but not free: the feed-forward is in the loop through the measured motor angle, so cogging ten times too large and of the wrong sign acts like ten times the real cogging, and the tool chatters at rest. A wrong model degrades performance; the servo and the energy tank keep the arm bounded.
 
-<sub>Proof run took 17 min.</sub>
+## Grades: Budget and premium actuators
+
+**Target:** Reported (NX-26): how each grade behaves, and what the network and the learned models change  
+**Measured:** network damping changes task vibration by −8 % (premium), +9 % (budget); learned models cut sweep deviation 1.98× (premium), 6.19× (budget)  
+**Verdict:** · reported
+
+KX-6. Ideal: datasheet actuators. Premium and budget: every joint drawn from the grade (`sim/src/actuators/grades.ts`); budget adds current-sensing offset (ripple once per electrical turn) and gain mismatch (twice per turn), strong cogging, stickier friction and gear play. Each grade's learned models were trained on its own commissioning run, like the open units.
+
+**Damping**, with each joint's datasheet model and, for the graded units, its learned model. Tap: settling time to the 5 % band and peak; task: a figure of eight from the VLA computer, tracking RMS and the vibration joints 2–6 feel (mean, °/s RMS above 3 Hz):
+
+| Grade | Tap, joint control only | Tap, network | Task, joint control only | Task, network |
+|---|---|---|---|---|
+| ideal, datasheet models | 0.515 s, 8.64 mm | 0.270 s, 7.37 mm | 2.60 mm, 7.55 °/s | 2.59 mm, 7.17 °/s |
+| premium, datasheet models | 0.506 s, 8.64 mm | 0.261 s, 7.38 mm | 2.42 mm, 8.10 °/s | 2.39 mm, 7.46 °/s |
+| premium, learned models | 0.506 s, 8.64 mm | 0.263 s, 7.38 mm | 2.43 mm, 8.08 °/s | 2.40 mm, 7.44 °/s |
+| budget, datasheet models | 0.453 s, 9.26 mm | 0.696 s, 6.58 mm | 25.08 mm, 21.32 °/s | 25.32 mm, 23.32 °/s |
+| budget, learned models | 0.394 s, 8.58 mm | 0.228 s, 7.03 mm | 5.37 mm, 20.16 °/s | 5.42 mm, 21.60 °/s |
+
+**Models** (network damping). Sweep: how far the joints stray from the ideal arm during slow sweeps (mrad RMS); tasks: tracking RMS; tap: settling time:
+
+| Grade | Model | Sweep | Figure of eight | Pick and place | Tap |
+|---|---|---|---|---|---|
+| ideal | datasheet | 0.000 | 1.86 mm | 1.62 mm | 0.278 s |
+| premium | datasheet | 0.129 | 2.58 mm | 2.38 mm | 0.270 s |
+| premium | learned | 0.065 | 2.58 mm | 2.38 mm | 0.275 s |
+| budget | datasheet | 29.469 | 25.64 mm | 25.14 mm | 1.919 s |
+| budget | learned | 4.764 | 4.91 mm | 4.45 mm | 0.216 s |
+
+**Report to source.** 10 blinded trials per grade and model (a random joint gets a gear-mesh ripple of 5–15 % of rated; right / wrong / missed), and a figure of eight with nothing injected (joints that claimed a disturbance of their own, source faults):
+
+| Grade | Residual | Trials right / wrong / missed | Nothing injected: claims | Faults |
+|---|---|---|---|---|
+| ideal | datasheet | 10 / 0 / 0 | none | 0 |
+| premium | datasheet | 10 / 0 / 0 | none | 0 |
+| premium | learned | 10 / 0 / 0 | none | 0 |
+| budget | datasheet | 3 / 7 / 0 | J1, J2, J3, J5, J6 | 0 |
+| budget | learned | 6 / 4 / 0 | J6 | 0 |
+
+## Headroom: Headroom for learned damping
+
+**Target:** Reported (NX-27): how much better any damping could do after a tap  
+**Measured:** KX-6L: ideal 2.9× lower mean distance than network; KX-6: ideal 3.7× lower mean distance than network  
+**Verdict:** · reported
+
+Taps at rest as in H1 (two postures, two directions, unseen seeds). Per cell: mean tool distance from rest over the first second, time until the tool stays within 0.5 mm, peak. The ideal controller is an LQR on the linearised plant with the joints' own position loops, seeing every motor, gear and link-bending coordinate with no delay or noise, held to the joints' damping budget (a quarter of peak torque, a 50 mJ energy tank); its weighting was chosen per arm on one tuning tap. No joint can build it: it is an upper bound.
+
+| Variant | KX-6L | KX-6 | KX-6, budget actuators |
+|---|---|---|---|
+| Joint control only | 2.206 mm, 0.564 s, 13.1 mm | 1.767 mm, 0.506 s, 10.9 mm | 1.882 mm, 0.469 s, 11.5 mm |
+| Joint-local damping | 1.094 mm, 0.266 s, 11.6 mm | 0.906 mm, 0.219 s, 9.4 mm | 1.187 mm, 0.976 s, 10.0 mm |
+| Network damping | 1.135 mm, 0.216 s, 11.3 mm | 0.992 mm, 0.225 s, 9.3 mm | 1.258 mm, 0.582 s, 8.4 mm |
+| Ideal (whole state, no delay) | 0.385 mm, 0.077 s, 7.2 mm | 0.266 mm, 0.079 s, 5.2 mm | 0.480 mm, 1.525 s, 5.6 mm |
+| Ideal without the energy tank | 0.348 mm, 0.075 s, 6.7 mm | 0.260 mm, 0.074 s, 5.2 mm | — |
+| Ideal, one bus cycle late | 0.386 mm, 0.085 s, 7.2 mm | 0.275 mm, 0.079 s, 5.2 mm | — |
+
+The tank and a bus cycle of delay cost the ideal controller almost nothing: its advantage comes from acting on the whole arm's state at once, every joint coordinated, not from speed or from giving up passivity. On budget actuators, designed on the datasheet plant, it lowers the mean but is slow to stay within 0.5 mm: gear play and stiction are what a linear design ignores.
+
+<sub>Proof run took 28 min.</sub>
