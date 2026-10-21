@@ -7,7 +7,7 @@
  * is written as the joint's own log, plus a separate ground-truth file the training never
  * reads.
  *
- *   node experiments/src/commission.ts [armSeeds=3] [--sealed]
+ *   node experiments/src/commission.ts [armSeeds=3] [--sealed | --grade budget|premium]
  *
  * Writes experiments/results/commissioning/<arm>-s<seed>/:
  *   meta.json                what each node knows about itself (its EEPROM) and the format
@@ -17,7 +17,8 @@
  *                            plant's gear damping
  *
  * `--sealed` draws only the sealed out-of-family actuator. It is for the final H10 run and
- * nothing else (see docs/tickets/NX-04.md).
+ * nothing else (see docs/tickets/NX-04.md). `--grade` draws every joint from one actuator
+ * grade (NX-26): units `kx6-budget-s500…` and `kx6-premium-s600…`.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import type { HiddenActuator } from "../../sim/src/actuators/hiddenActuator.ts";
@@ -42,6 +43,12 @@ const HELDOUT_SHIFT = 0.25;
 const SEALED_FAMILY = "sealed-lugre-eccentric";
 
 const sealed = process.argv.includes("--sealed");
+const gradeArg = process.argv.indexOf("--grade");
+const grade = gradeArg > 0 ? process.argv[gradeArg + 1] : undefined;
+if (grade !== undefined && grade !== "budget" && grade !== "premium") {
+  throw new Error(`unknown grade ${grade}`);
+}
+const GRADE_SEEDS = { budget: 500, premium: 600 } as const;
 const armSeeds = Number(process.argv.find((a, i) => i > 1 && /^\d+$/.test(a)) ?? 3);
 const spec = withInitialAngles(KX6, KX6_HOME);
 const gains = tunedGains("kx6", "network");
@@ -49,11 +56,15 @@ const configs = nodeConfigsFor(spec, BUS_CYCLE_HZ, gains);
 const lab = await openLab();
 
 for (let s = 0; s < armSeeds; s++) {
-  const seed = (sealed ? 900 : 300) + s;
-  const name = `kx6-${sealed ? "sealed-" : ""}s${seed}`;
+  const seed = (grade ? GRADE_SEEDS[grade] : sealed ? 900 : 300) + s;
+  const name = `kx6-${grade ? `${grade}-` : sealed ? "sealed-" : ""}s${seed}`;
   const dir = new URL(`../results/commissioning/${name}/`, import.meta.url);
   await mkdir(new URL("truth/", dir), { recursive: true });
-  const actuators = sealed ? { families: [SEALED_FAMILY], includeSealed: true } : {};
+  const actuators = grade
+    ? { families: [`grade-${grade}`] }
+    : sealed
+      ? { families: [SEALED_FAMILY], includeSealed: true }
+      : {};
   const families = await withArm(lab, { spec, gains, seed, actuators }, async (system) => {
     system.run(3);
     system.host.applySettings({ damping: DampingMode.network });

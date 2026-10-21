@@ -100,4 +100,8 @@ impl DynamicsModel for ModelSet {
     fn unexplained(&self, b: &MotorBalance) -> f32 {
         self.active().unexplained(b)
     }
+
+    fn spring_torque(&self, stiffness: f32, twist: f32) -> f32 {
+        self.active().spring_torque(stiffness, twist)
+    }
 }

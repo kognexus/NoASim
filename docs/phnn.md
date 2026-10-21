@@ -18,7 +18,7 @@ H(θ, p, φ) = p²/2I + V_cog(θ) + V_gear(φ)
 
 | Part | Learned as | Why this form |
 |---|---|---|
-| `V_cog` | Linear layer over Fourier features at the joint's own announced orders, from the gear mesh up | Cogging is periodic in the motor angle at orders the unit knows from its own geometry |
+| `V_cog` | Linear layer over Fourier features at the joint's own announced orders from the gear mesh up, and once and twice per electrical turn (NX-26) | Cogging, and the ripple of phase-current sensing errors, are periodic in the motor angle at orders the unit knows from its own geometry |
 | `V_gear` | Datasheet spring ½kφ² plus a two-layer tanh MLP | Stiffening and play are corrections to a known spring |
 | `R(ω)` | Two MLPs through softplus (viscous-like, Coulomb-like) | Friction can only take energy: R ≥ 0 |
 | `c` | Softplus of one parameter | Gear damping can only take energy |

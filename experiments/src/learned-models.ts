@@ -36,8 +36,8 @@ const spec = withInitialAngles(KX6, KX6_HOME);
 const gains = tunedGains("kx6", "network");
 
 /** Settings byte of each model (`ModelChoice`). */
-const MODEL_BYTE = { nominal: 0, fitted: 1, learned: 2 } as const;
-type ModelName = keyof typeof MODEL_BYTE;
+export const MODEL_BYTE = { nominal: 0, fitted: 1, learned: 2 } as const;
+export type ModelName = keyof typeof MODEL_BYTE;
 
 export interface Outcome {
   /**
@@ -86,7 +86,7 @@ function sweeps(system: ArmSystem): number[][] {
 }
 
 /** RMS difference of two sweep trajectories after the unscored start, rad. */
-function deviation(a: number[][], b: number[][]): number {
+export function deviation(a: number[][], b: number[][]): number {
   let sum = 0;
   let count = 0;
   for (let k = SWEEP_SKIP_SECONDS * BUS_CYCLE_HZ; k < Math.min(a.length, b.length); k++) {
@@ -99,12 +99,18 @@ function deviation(a: number[][], b: number[][]): number {
   return Math.sqrt(sum / Math.max(1, count));
 }
 
-type Measured = Omit<Outcome, "sweepDeviationMrad">;
+export type Measured = Omit<Outcome, "sweepDeviationMrad">;
 
 /** Slow sweeps, two tasks and a tap, with the joints using `model`. */
-function trial(system: ArmSystem, model: ModelName): { outcome: Measured; sweep: number[][] } {
+export function trial(
+  system: ArmSystem,
+  model: ModelName,
+): { outcome: Measured; sweep: number[][] } {
+  // The model from power-on: what the joint estimates while it settles (the payload, from
+  // the torque it holds) depends on it.
+  system.host.applySettings({ model: MODEL_BYTE[model] });
   system.run(3);
-  system.host.applySettings({ damping: DampingMode.network, model: MODEL_BYTE[model] });
+  system.host.applySettings({ damping: DampingMode.network });
   const options = { mode: "joint-level" } as const;
   const sweep = sweeps(system);
   const eight = followTask(system, (s) => figureEight(homePose(s)), options);

@@ -136,3 +136,43 @@ export function backlash(stiffness: number, width: number): ActuatorEffect {
     gearTorque: ({ gearTwist }) => stiffness * half * Math.tanh(gearTwist / half),
   };
 }
+
+/**
+ * Offsets in the phase-current sensors. The drive regulates the current it measures, so
+ * an offset fixed in the stator frame turns into a q-axis current error that rotates
+ * with the rotor: a torque ripple once per electrical turn, the same at any load,
+ * `amplitude · sin(θe + phase)` with `amplitude` = |offset| · Kt. The joint measures the
+ * current it regulates and does not see the error in its current reading.
+ */
+export function currentSensorOffset(
+  electricalPerOutputRad: number,
+  amplitude: number,
+  phase: number,
+): ActuatorEffect {
+  return {
+    name: "current-sensor offset",
+    driveTorque: ({ motorAngle }) =>
+      amplitude * Math.sin(motorAngle * electricalPerOutputRad + phase),
+  };
+}
+
+/**
+ * Gain errors of the phase-current sensors. With the two phases' gains off by `mismatch`
+ * from each other and by `meanError` on average, the measured q-axis current reads high
+ * by `meanError + (mismatch/2)·cos(2θe + phase)` of the true one; the drive regulates the
+ * measured current, so the motor produces that much less: a torque constant error, and a
+ * ripple twice per electrical turn in proportion to the load.
+ */
+export function currentSensorGain(
+  electricalPerOutputRad: number,
+  meanError: number,
+  mismatch: number,
+  phase: number,
+): ActuatorEffect {
+  return {
+    name: "current-sensor gain error",
+    driveTorque: ({ motorAngle }, produced) =>
+      -produced *
+      (meanError + (mismatch / 2) * Math.cos(2 * motorAngle * electricalPerOutputRad + phase)),
+  };
+}

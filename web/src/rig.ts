@@ -77,8 +77,11 @@ const unitSeed = (unit: string) => Number(unit.split("-s").pop());
 const SEALED_FAMILY = "sealed-lugre-eccentric";
 
 /** How a unit's actuators are drawn: the sealed unit from the sealed family only. */
-const actuatorDraw = (unit: string): DrawOptions =>
-  unit.includes("sealed") ? { families: [SEALED_FAMILY], includeSealed: true } : {};
+const actuatorDraw = (unit: string): DrawOptions => {
+  if (unit.includes("sealed")) return { families: [SEALED_FAMILY], includeSealed: true };
+  const grade = ["budget", "premium"].find((g) => unit.includes(`-${g}-`));
+  return grade ? { families: [`grade-${grade}`] } : {};
+};
 
 /** Both damping laws as tuned, so the mode can be switched live by the settings byte. */
 function demoGains(arm: ArmName): ControlGains {
@@ -305,6 +308,9 @@ const ACTUATOR_DESCRIPTIONS: Record<string, string> = {
   "hysteretic-stiffening": "gear that stiffens with load, with hysteresis",
   backlash: "gear with play (backlash)",
   [SEALED_FAMILY]: "sticky friction with memory, eccentric gear",
+  "grade-premium": "premium build with little cogging, no gear play and calibrated current sensing",
+  "grade-budget":
+    "budget build with strong cogging and ripple, gear play and current-sensing errors",
 };
 
 /**

@@ -7,6 +7,11 @@ All notable changes, one entry per ticket. The format follows
 
 ### Fixed
 
+- **NX-26** With gear play, a joint read the play as load (datasheet stiffness × twist):
+  on budget actuators its payload estimate was four times too high and the arm stood 1°
+  low (25 mm tracking error, which damping cannot touch). A joint now takes its gear
+  torque from its own model of itself; with the learned models the error is 5 mm. The
+  learned-model trials now use the model from power-on.
 - **NX-25** Under a 15 Hz policy computer, network damping made the joints vibrate 4–10 %
   more during tasks: it pulled each joint onto the kinks between goal segments. Damping
   now subtracts the reference velocity smoothed at half the goal rate, which each joint
@@ -27,6 +32,11 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-26** Budget and premium actuator grades, with phase-current sensing errors
+  (offset: ripple once per electrical turn; gain mismatch: twice). Learned models now
+  include the electrical orders (premium closes 101 % of the gap instead of 37 %).
+  Per-grade results in RESULTS.md: premium behaves like the ideal arm. Demo: "Budget
+  actuators" and "Premium actuators".
 - **NX-24** Demo for comparison: both 3D views share one camera; each arm's tool-distance
   and per-joint vibration charts sit under its view, on scales shared between the arms;
   "?" tooltips on every control. Ripple buttons toggle, with a line and a bus-view mark

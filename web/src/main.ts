@@ -181,7 +181,9 @@ function showActuatorDetail(): void {
   $("#actuator-detail").textContent =
     shared.unit === "datasheet"
       ? "Every joint's actuator is exactly as specified."
-      : descriptions.map((d, j) => `J${j + 1}: ${d}`).join("; ");
+      : new Set(descriptions).size === 1
+        ? `Every joint: ${descriptions[0]}.`
+        : descriptions.map((d, j) => `J${j + 1}: ${d}`).join("; ");
 }
 
 // ---- controls ---------------------------------------------------------------------------
@@ -222,10 +224,16 @@ armEls.forEach((el, i) => {
   model.addEventListener("change", update);
 });
 
-for (const unit of UNITS) {
-  const sealed = unit.includes("sealed");
-  const set = UNITS.filter((u) => !u.includes("sealed")).indexOf(unit) + 1;
-  const name = sealed ? "Out-of-family test set" : `Imperfect set ${set}`;
+/** Units with a plain name of their own; the others are numbered imperfect sets. */
+const NAMED_UNITS: [string, string][] = [
+  ["premium", "Premium actuators"],
+  ["budget", "Budget actuators"],
+  ["sealed", "Out-of-family test set"],
+];
+const unitName = (unit: string) => NAMED_UNITS.find(([key]) => unit.includes(key))?.[1];
+const numbered = UNITS.filter((u) => !unitName(u));
+for (const unit of [...numbered, ...UNITS.filter((u) => unitName(u))]) {
+  const name = unitName(unit) ?? `Imperfect set ${numbered.indexOf(unit) + 1}`;
   $<HTMLSelectElement>("#unit").add(new Option(`${name}, with learned models (stiff links)`, unit));
 }
 

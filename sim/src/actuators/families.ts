@@ -18,6 +18,7 @@ import {
   viscousCoulomb,
   type ActuatorEffect,
 } from "./effects.ts";
+import { GRADES } from "./grades.ts";
 import { HiddenActuator } from "./hiddenActuator.ts";
 import { SEALED_FAMILY } from "./sealed.ts";
 
@@ -26,6 +27,8 @@ export interface ActuatorFamily {
   readonly title: string;
   /** Sealed families are excluded unless explicitly requested (out-of-family test). */
   readonly sealed: boolean;
+  /** Drawn only when named in `DrawOptions.families` (the actuator grades, NX-26). */
+  readonly onRequest?: boolean;
   draw(actuator: ActuatorSpec, rng: Random): ActuatorEffect[];
 }
 
@@ -149,9 +152,10 @@ export function drawHiddenActuators(
   rng: Random,
   options: DrawOptions = {},
 ): HiddenActuator[] {
-  const allowed = ALL_FAMILIES.filter(
+  const allowed = [...ALL_FAMILIES, ...GRADES].filter(
     (f) =>
-      (options.includeSealed === true || !f.sealed) && (options.families?.includes(f.id) ?? true),
+      (options.includeSealed === true || !f.sealed) &&
+      (options.families?.includes(f.id) ?? f.onRequest !== true),
   );
   if (allowed.length === 0) throw new Error("no actuator family matches the draw options");
   return arm.joints.map((joint) => {

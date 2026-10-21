@@ -60,7 +60,8 @@ def _load_layers(net: nn.Sequential, layers: list[dict]) -> None:
 def load_weights(path: Path, meta: JointMeta) -> JointPHNN:
     """Rebuilds a model exported by :func:`export_weights` (for the joint ``meta``)."""
     document = json.loads(path.read_text())
-    model = JointPHNN(meta)
+    # The orders the model was trained with (models from before NX-26 have fewer).
+    model = JointPHNN(meta, orders=[float(o) for o in document["cogging"]["orders"]])
     with torch.no_grad():
         spread = math.log(document["inertia"] / meta.reflected_inertia) / math.log(INERTIA_RANGE)
         model.raw_inertia.copy_(torch.tensor(spread).atanh())

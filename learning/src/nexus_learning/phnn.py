@@ -51,9 +51,15 @@ INERTIA_RANGE = 2.0
 
 
 def cogging_orders(meta: JointMeta) -> list[float]:
-    """Announced orders from the gear mesh (four per motor turn) up, and their doubles."""
+    """Announced orders from the mesh up, once per electrical turn, and their doubles.
+
+    The mesh is taken as four per motor turn. The electrical order is where errors in the
+    phase-current sensing act (offset once, gain mismatch twice per electrical turn;
+    NX-26). The unit knows its pole pairs.
+    """
     mesh = 4.0 * meta.gear_ratio
-    base = {o for o in meta.fingerprint if o >= mesh}
+    electrical = float(meta.pole_pairs * meta.gear_ratio)
+    base = {o for o in meta.fingerprint if o >= mesh} | {electrical}
     return sorted(base | {2.0 * o for o in base})
 
 
@@ -84,12 +90,14 @@ class FourierFeatures(nn.Module):
 class JointPHNN(nn.Module):
     """The port-Hamiltonian model of one joint, scaled by what the joint knows of itself."""
 
-    def __init__(self, meta: JointMeta, hidden: int = 16) -> None:
+    def __init__(
+        self, meta: JointMeta, hidden: int = 16, orders: list[float] | None = None
+    ) -> None:
         super().__init__()
         self.meta = meta
         k = meta.gear_stiffness
         self.twist_ref = meta.rated_torque / k
-        orders = cogging_orders(meta)
+        orders = cogging_orders(meta) if orders is None else orders
         self.cog_features = FourierFeatures(orders)
         self.cog = nn.Linear(2 * len(orders), 1, bias=False)
         nn.init.zeros_(self.cog.weight)

@@ -177,9 +177,17 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
         &self.neighbours
     }
 
+    /// This cycle's estimate, with the gear torque as the joint's own model of the gear sees
+    /// it: with the datasheet spring, gear play would read as load (NX-26).
+    fn measure(&mut self, sensors: &SensorFrame) -> Estimate {
+        let mut estimate = self.stages.estimator.update(sensors);
+        estimate.gear_torque = self.models.spring_torque(self.config.gear_stiffness, estimate.gear_twist);
+        estimate
+    }
+
     /// Runs one bus cycle and returns the motor torque (output-referred, N·m).
     pub fn tick(&mut self, cycle: u32, sensors: &SensorFrame, inbox: &Inbox, outbox: &mut Outbox) -> f32 {
-        let estimate = self.stages.estimator.update(sensors);
+        let estimate = self.measure(sensors);
         if !self.started {
             // Power-on: hold where the joint is.
             self.stages.interpolator.hold(estimate.output_angle);

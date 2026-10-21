@@ -297,12 +297,18 @@ impl DynamicsModel for PhnnModel {
                 - self.friction_torque(b.velocity);
         self.inertia * b.acceleration - produced
     }
+
+    /// The learned gear, without its damping.
+    fn spring_torque(&self, _stiffness: f32, twist: f32) -> f32 {
+        self.gear_torque(twist, 0.0)
+    }
 }
 
 #[cfg(test)]
 #[allow(clippy::cast_precision_loss)]
 mod tests {
     use super::{Mlp, ModelError, PhnnModel, Words, FORMAT_VERSION, MODEL_WORDS};
+    use crate::dynamics::DynamicsModel;
 
     /// A model block with every network at zero except the given first-layer weights.
     fn block(joint: u8) -> [f32; MODEL_WORDS] {
@@ -336,6 +342,9 @@ mod tests {
         let expected = (0.05 * ln2 + 0.3 * ln2 / libm::sqrtf(1.0 + 1e-4)) * 1.0;
         assert!((model.friction_torque(1.0) - expected).abs() < 1e-5);
         assert!((model.gear_torque(1e-3, 0.0) - 6.0).abs() < 1e-4);
+        // A joint using this model reads its gear torque from the learned gear, not the
+        // datasheet stiffness it is given.
+        assert!((model.spring_torque(1.0e9, 1e-3) - 6.0).abs() < 1e-4);
         assert!((model.gain(0.3) - 1.0).abs() < 1e-6);
         // V_cog = 12·0.01·sin(36θ): torque −12·0.01·36·cos(36θ).
         assert!((model.cogging(0.0) + 12.0 * 0.01 * 36.0).abs() < 1e-4);

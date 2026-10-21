@@ -59,6 +59,12 @@ pub trait DynamicsModel {
     fn unexplained(&self, b: &MotorBalance) -> f32 {
         b.inertia * b.acceleration - b.stiffness * b.twist + self.friction(b.angle, b.velocity) - b.applied
     }
+    /// Torque the gear transmits at `twist`, N·m, same sign as the twist. The default is
+    /// the datasheet spring. A model that knows the gear (play, stiffening) uses it, so a
+    /// joint does not read play as load when it estimates what it holds (NX-26).
+    fn spring_torque(&self, stiffness: f32, twist: f32) -> f32 {
+        stiffness * twist
+    }
 }
 
 /// Datasheet friction: viscous plus Coulomb, never updated.

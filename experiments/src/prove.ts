@@ -1,5 +1,6 @@
 /**
- * `npm run prove`: measures every hypothesis of the plan (H1–H10) from the code in this
+ * `npm run prove`: measures every hypothesis of the plan (H1–H10), and the actuator grades
+ * (NX-26), from the code in this
  * repository and writes docs/RESULTS.md with SVG plots in docs/results/. Deterministic:
  * every run uses fixed seeds, and the learned models are the committed ones.
  *
@@ -17,6 +18,7 @@ import { h2h8 } from "./prove/h2.ts";
 import { h3h4 } from "./prove/h3.ts";
 import { h5h7 } from "./prove/h5.ts";
 import { h6 } from "./prove/h6.ts";
+import { grades } from "./prove/grades.ts";
 import { h9 } from "./prove/h9.ts";
 import { openLab } from "./runner.ts";
 
@@ -50,6 +52,7 @@ const STEPS: [string[], () => Promise<Finding | Finding[]>][] = [
   [["H9"], () => h9(ctx)],
   [["H10a", "H10c"], () => h10ac(ctx)],
   [["H10b", "H10d"], () => h10bd(ctx)],
+  [["Grades"], () => grades(ctx)],
 ];
 
 const ORDER = [
@@ -69,6 +72,7 @@ const ORDER = [
   "H10b",
   "H10c",
   "H10d",
+  "Grades",
 ];
 const findings: Finding[] = [];
 for (const [ids, step] of STEPS) {

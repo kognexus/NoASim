@@ -43,6 +43,12 @@ What this repository shows and what it does not. Numbers are in [RESULTS.md](RES
   closed against a 70 % target, and two of six joints end worse than the datasheet. LuGre
   friction has an internal state the model lacks, and one commissioning run covers only
   part of the eccentric gear.
+- **Budget actuators with gear play.** A joint estimates the torque it holds from its
+  gear twist through its own model of the gear. With the datasheet model, play reads as
+  load: on budget actuators the payload estimate was four times too high and the arm
+  stood 1° low (25 mm tracking error). With the learned model it is 5 mm, but the
+  payload still reads 60 % high and attribution is 6 of 10 (NX-26). The grades' levels
+  are our estimates, not measured products.
 - **Joint-local damping under a classic controller.** During a classic controller's
   pick and place, joint-local damping makes the outer joints vibrate up to 13 % more than
   no damping and tracks 0.2 mm worse (measured in NX-25, unchanged by it). Likely cause,
