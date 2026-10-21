@@ -19,6 +19,7 @@ import { type BusOptions, EthercatBus, HOST_PORT } from "../bus/ethercatBus.ts";
 import { Host, type HostOptions } from "../host/host.ts";
 import { BUS_CYCLE_HZ } from "../index.ts";
 import type { NodeConfig } from "../node/nodeConfig.ts";
+import { packPhnnModel, type PhnnDocument } from "../node/phnnModel.ts";
 import { WasmNode } from "../node/wasmNode.ts";
 import type { ArmSpec } from "../plant/armSpec.ts";
 import { type ActuatorOutput, type ActuatorPhysics, IdealDrive } from "../plant/drive.ts";
@@ -55,6 +56,11 @@ export interface ArmSystemOptions {
   readonly obstacle?: ObstacleSpec;
   /** Adjusts the generated EEPROM contents per joint (experiments, tuning). */
   readonly configure?: (configs: NodeConfig[]) => NodeConfig[];
+  /**
+   * Each joint's frozen learned model (B11), loaded at power-up, in joint order. The
+   * settings' `model` byte selects it (2); without one a joint falls back to nominal.
+   */
+  readonly models?: readonly (PhnnDocument | undefined)[];
 }
 
 /** Everything belonging to one joint. */
@@ -136,6 +142,8 @@ export class ArmSystem {
         const config = configs[index];
         if (!config) throw new Error(`no node config for joint ${joint.name}`);
         node.init(config, index + 1);
+        const model = options.models?.[index];
+        if (model) node.loadModel(packPhnnModel(model));
         const sensors = new JointSensors(
           joint.actuator,
           options.sensors ?? NEXUS_SENSORS,

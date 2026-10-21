@@ -10,7 +10,10 @@
  * size while every joint strokes back and forth at its own speed; the trial is right if the
  * source, and only the source, claims it. Network mode against joints alone (local mode).
  *
- *   node experiments/src/report-to-source.ts [trials]
+ * H7 on hidden actuators (NX-15): the same trials on the committed units, whose actuators
+ * nobody described, with each joint's self-test using the nominal or its learned model.
+ *
+ *   node experiments/src/report-to-source.ts [trials=100] [hiddenTrials=30]
  *
  * Writes experiments/results/report-to-source.json.
  */
@@ -27,7 +30,7 @@ import {
   sweep,
 } from "../../sim/src/scenarios/source.ts";
 import { Random } from "../../sim/src/util/random.ts";
-import { openLab, withArm } from "./runner.ts";
+import { openLab, unitModels, withArm } from "./runner.ts";
 
 /** Seconds from the first claim within which the correction must have worked. */
 const DEADLINE_SECONDS = 2;
@@ -98,6 +101,13 @@ const score: Record<"network" | "local", Score> = {
 };
 const h7 = [];
 const rng = new Random(123);
+
+/** Right if the source, and only the source, claims it. */
+function tally(s: Score, run: RippleRun, source: number): void {
+  if (run.claimants.some((c) => c !== source + 1)) s.wrong++;
+  else if (run.claimants.includes(source + 1)) s.right++;
+  else s.none++;
+}
 for (let t = 0; t < trials; t++) {
   const source = Math.floor(rng.uniform() * spec.joints.length);
   const actuator = spec.joints[source]?.actuator;
@@ -117,10 +127,7 @@ for (let t = 0; t < trials; t++) {
         recordSeconds: 4,
       });
     });
-    const s = score[mode];
-    if (run.claimants.some((c) => c !== source + 1)) s.wrong++;
-    else if (run.claimants.includes(source + 1)) s.right++;
-    else s.none++;
+    tally(score[mode], run, source);
     outcome[mode] = run.claimants;
   }
   h7.push({ source: source + 1, amplitude, speeds, claimants: outcome });
@@ -131,8 +138,57 @@ console.log(
     ` joints alone ${score.local.right}/${trials} right, ${score.local.wrong} wrong`,
 );
 
+// ---- H7 on hidden actuators: the self-test with the nominal and the learned model --------
+// Each unit is an arm with its own hidden actuators and committed learned models (NX-15).
+const UNITS = ["kx6-s300", "kx6-s301", "kx6-s302"];
+const hiddenTrials = Number(process.argv[3] ?? 30);
+const MODEL_BYTE = { nominal: 0, learned: 2 } as const;
+const hiddenScore: Record<keyof typeof MODEL_BYTE, Score> = {
+  nominal: { right: 0, wrong: 0, none: 0 },
+  learned: { right: 0, wrong: 0, none: 0 },
+};
+const hidden = [];
+for (let t = 0; t < hiddenTrials; t++) {
+  const unit = UNITS[t % UNITS.length] ?? "kx6-s300";
+  const seed = Number(unit.split("-s").pop());
+  const models = await unitModels(unit, spec.joints.length);
+  const source = Math.floor(rng.uniform() * spec.joints.length);
+  const amplitude = rng.between(0.05, 0.15) * (spec.joints[source]?.actuator.ratedTorque ?? 0);
+  const speeds = spec.joints.map(() => rng.between(1.0, 1.6));
+  const outcome: Record<string, number[]> = {};
+  for (const model of ["nominal", "learned"] as const) {
+    const run = await withArm(lab, { spec, gains, seed, actuators: {}, models }, (system) => {
+      system.run(3);
+      system.host.applySettings({ model: MODEL_BYTE[model] });
+      return rippleRun(system, {
+        source,
+        order: meshOrder(spec.joints[source] ?? joint),
+        amplitude,
+        mode: DampingMode.network,
+        motion: strokes(speeds),
+        recordSeconds: 4,
+      });
+    });
+    tally(hiddenScore[model], run, source);
+    outcome[model] = run.claimants;
+  }
+  hidden.push({ unit, source: source + 1, amplitude, speeds, claimants: outcome });
+  if ((t + 1) % 10 === 0) {
+    console.log(`H7  hidden actuators, after ${t + 1} trials: ${JSON.stringify(hiddenScore)}`);
+  }
+}
+
 await mkdir(new URL("../results/", import.meta.url), { recursive: true });
 await writeFile(
   new URL("../results/report-to-source.json", import.meta.url),
-  `${JSON.stringify({ deadlineSeconds: DEADLINE_SECONDS, h5, h7: { trials, score, runs: h7 } }, null, 2)}\n`,
+  `${JSON.stringify(
+    {
+      deadlineSeconds: DEADLINE_SECONDS,
+      h5,
+      h7: { trials, score, runs: h7 },
+      h7Hidden: { trials: hiddenTrials, score: hiddenScore, runs: hidden },
+    },
+    null,
+    2,
+  )}\n`,
 );

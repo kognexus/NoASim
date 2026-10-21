@@ -1,5 +1,6 @@
-//! The node's model of its own actuator: what friction (and later ripple and stiffness)
-//! it has to overcome. The controller uses it as feed-forward.
+//! The node's model of its own actuator: what friction (and, for the learned model,
+//! cogging, gear nonlinearity and torque-constant drift) it has to overcome. The controller
+//! uses it as feed-forward; source attribution uses what it leaves unexplained.
 //!
 //! Friction is measured without a torque sensor, from the motor-side balance
 //!
@@ -24,12 +25,40 @@ fn dot(a: &[f32; N], b: &[f32; N]) -> f32 {
     a.iter().zip(b).map(|(x, y)| x * y).sum()
 }
 
+/// One cycle of the motor-side balance, centred on a single instant: everything a model
+/// needs to say how much torque it cannot explain (see `source.rs` for the alignment).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct MotorBalance {
+    /// Motor angle, output-referred, rad.
+    pub angle: f32,
+    /// Motor velocity, rad/s.
+    pub velocity: f32,
+    /// Motor acceleration, rad/s².
+    pub acceleration: f32,
+    /// Gear twist (output minus motor), rad.
+    pub twist: f32,
+    /// Gear twist rate, rad/s.
+    pub twist_rate: f32,
+    /// Commanded torque that acted, N·m.
+    pub applied: f32,
+    /// Datasheet rotor inertia, output-referred, kg·m².
+    pub inertia: f32,
+    /// Datasheet gear stiffness, N·m/rad.
+    pub stiffness: f32,
+}
+
 /// A model of the actuator's own dynamics.
 pub trait DynamicsModel {
     /// Learns from one cycle of measurements (no-op for fixed models).
     fn observe(&mut self, estimate: &Estimate);
-    /// Friction torque at `motor_velocity` (same sign as the velocity), N·m.
+    /// Torque to command to overcome friction (and whatever else the model knows) at
+    /// `motor_velocity`, N·m; same sign as the velocity for plain friction.
     fn friction(&self, motor_angle: f32, motor_velocity: f32) -> f32;
+    /// Torque the balance leaves unexplained, `I·α − produced`, N·m. The default uses the
+    /// datasheet inertia and spring with this model's friction.
+    fn unexplained(&self, b: &MotorBalance) -> f32 {
+        b.inertia * b.acceleration - b.stiffness * b.twist + self.friction(b.angle, b.velocity) - b.applied
+    }
 }
 
 /// Datasheet friction: viscous plus Coulomb, never updated.

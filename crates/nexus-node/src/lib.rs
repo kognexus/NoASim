@@ -24,6 +24,7 @@ mod impact;
 mod io;
 mod models;
 mod neighbours;
+mod phnn;
 mod reference;
 mod safety;
 mod sensors;
@@ -35,7 +36,7 @@ pub use actuator::{Actuator, SafetyOutputs, Stages};
 pub use config::NodeConfig;
 pub use control::{Controller, JointController};
 pub use damping::{Damper, DampingContext, EnergyTank, LocalDamper, NetworkDamper, MAX_NEIGHBOUR_AGE};
-pub use dynamics::{DynamicsModel, NominalModel, RlsModel};
+pub use dynamics::{DynamicsModel, MotorBalance, NominalModel, RlsModel};
 pub use estimate::{EncoderEstimator, Estimate, Estimator, TrackingObserver};
 pub use excitation::Excitation;
 pub use filters::{HighPass, LowPass, LowPass2};
@@ -49,6 +50,7 @@ pub use models::{ModelChoice, ModelSet};
 pub use neighbours::{Neighbour, Neighbourhood, Side};
 pub use nexus_proto as proto;
 pub use nexus_proto::NodeId;
+pub use phnn::{ModelError, PhnnModel, MODEL_WORDS};
 pub use reference::{
     InterpolationMode, Interpolator, Quintic, Reference, SplineInterpolator, StepInterpolator,
     SwitchableInterpolator,

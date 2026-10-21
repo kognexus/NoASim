@@ -3,7 +3,7 @@
 use crate::config::NodeConfig;
 use crate::control::Controller;
 use crate::damping::{Damper, DampingContext, MAX_NEIGHBOUR_AGE};
-use crate::dynamics::DynamicsModel;
+use crate::dynamics::{DynamicsModel, MotorBalance};
 use crate::estimate::{Estimate, Estimator};
 use crate::excitation::Excitation;
 use crate::gravity::{GravityCompensator, GravitySource};
@@ -11,6 +11,7 @@ use crate::impact::{ImpactDetector, Watchdog};
 use crate::io::{Inbox, Outbox};
 use crate::models::{ModelChoice, ModelSet};
 use crate::neighbours::{Neighbourhood, Side};
+use crate::phnn::{ModelError, PhnnModel};
 use crate::reference::{InterpolationMode, Interpolator, Reference};
 use crate::safety::{thermal_headroom, SafetySupervisor};
 use crate::sensors::SensorFrame;
@@ -227,8 +228,10 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             }
         }
         let reference = self.speed_limited(self.directive.reference.unwrap_or(planned));
+        // Position-locked terms (cogging, ripple) follow the motor where it is; friction
+        // follows the planned speed, which is smooth.
         let feedforward =
-            self.models.friction(reference.position, reference.velocity) + gravity.holding_torque;
+            self.models.friction(estimate.motor_angle, reference.velocity) + gravity.holding_torque;
         let control = self.stages.controller.torque(&estimate, &reference, feedforward);
 
         let context = DampingContext {
@@ -241,12 +244,11 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
         // Report to source (B1b): tell the others what we feel, claim what is ours, cancel it.
         let network = matches!(self.settings.damping, DampingMode::Network | DampingMode::NetworkWithSource);
         let correct = self.settings.damping == DampingMode::NetworkWithSource;
-        let friction = self.models.friction(estimate.motor_angle, estimate.motor_velocity);
         let source = self.source.update(
             self.id,
             &estimate,
             self.last_torque,
-            friction,
+            &self.models,
             &self.neighbours,
             cycle,
             network,
@@ -366,6 +368,23 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             .get(Side::Outer)
             .and_then(|n| n.fresh_state(cycle, MAX_NEIGHBOUR_AGE))
             .map_or([0.0; 3], |state| rotate(state.gyro, self.config.axis, angle))
+    }
+
+    /// Installs the joint's frozen learned model (B11), read from its exported words.
+    ///
+    /// # Errors
+    ///
+    /// When the words are not a model for this joint in a format the node reads.
+    pub fn load_model(&mut self, words: &[f32]) -> Result<(), ModelError> {
+        self.models.load(PhnnModel::from_words(words, self.line_position)?);
+        Ok(())
+    }
+
+    /// What the loaded learned model leaves unexplained of `balance` at winding
+    /// temperature `temperature`, or `None` without a model (diagnostics and tests).
+    #[must_use]
+    pub fn learned_residual(&self, balance: &MotorBalance, temperature: f32) -> Option<f32> {
+        Some(self.models.learned()?.at_temperature(temperature).unexplained(balance))
     }
 
     /// The reference from the goals, or from the commissioning excitation (B11) while it

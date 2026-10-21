@@ -6,6 +6,7 @@ import { readFile } from "node:fs/promises";
 import { DampingMode } from "../../sim/src/bus/protocol.ts";
 import { ArmSystem, type ArmSystemOptions } from "../../sim/src/harness/armSystem.ts";
 import { type ControlGains, DEFAULT_GAINS } from "../../sim/src/harness/gains.ts";
+import type { PhnnDocument } from "../../sim/src/node/phnnModel.ts";
 import type { ArmSpec } from "../../sim/src/plant/armSpec.ts";
 import { KX6, KX6L } from "../../sim/src/plant/kx6.ts";
 import { loadMujoco, type Mujoco } from "../../sim/src/plant/mujoco.ts";
@@ -36,6 +37,16 @@ export async function openLab(): Promise<Lab> {
     readFile(WASM).then((bytes) => WebAssembly.compile(bytes)),
   ]);
   return { mujoco, nodeModule };
+}
+
+/** The learned models committed for `unit` (`models/<unit>/joint<n>.json`), in joint order. */
+export async function unitModels(unit: string, joints: number): Promise<PhnnDocument[]> {
+  return Promise.all(
+    Array.from({ length: joints }, async (_, i) => {
+      const url = new URL(`../../models/${unit}/joint${i + 1}.json`, import.meta.url);
+      return JSON.parse(await readFile(url, "utf8")) as PhnnDocument;
+    }),
+  );
 }
 
 export async function withArm<T>(

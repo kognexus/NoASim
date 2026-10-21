@@ -12,6 +12,16 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-15** The learned model in the node: no_std inference with analytic gradients, loaded
+  as a versioned word block (checked against the trainer's probe values). It is used
+  for friction and cogging feed-forward and for the source self-test's residual, never
+  in the safety path. H10b: joints stray 0.11 mrad from a datasheet-actuator arm with it,
+  against 0.17–0.22 for the datasheet and up to 2.4 for the online fit. H10d: broken
+  models stay bounded; the damping term never injects energy. H10a on the sealed family:
+  61 % of the gap closed, target 70 %, not met; better than RLS. The self-test now uses a
+  lock-in reference beside each order (it never claimed on the lightweight arm) and the
+  corrected command alignment. H7 100/100 in both modes; on hidden actuators the
+  learned residual cuts false claims from 6 in 30 trials to 1.
 - **NX-14** `learning/` (uv, PyTorch): a port-Hamiltonian model of each joint, trained on
   its own commissioning log. It has a cogging and a gear potential, friction and gear
   damping that can only dissipate, and a torque-constant gain. Exported as versioned

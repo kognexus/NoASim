@@ -17,6 +17,16 @@ interface NexusExports {
   nexus_layout(field: number): number;
   nexus_init(linePosition: number): void;
   nexus_tick(): void;
+  nexus_load_model(): number;
+  nexus_model_residual(
+    angle: number,
+    velocity: number,
+    acceleration: number,
+    twist: number,
+    twistRate: number,
+    applied: number,
+    temperature: number,
+  ): number;
 }
 
 /** Byte offsets and sizes of the I/O block, as reported by the module. */
@@ -35,6 +45,9 @@ interface IoLayout {
   sensorsSize: number;
   brake: number;
   safeTorqueOff: number;
+  modelLen: number;
+  model: number;
+  modelCapacity: number;
 }
 
 /** Number of `f32` fields in the node's `SensorFrame`. */
@@ -58,6 +71,9 @@ function readLayout(exports: NexusExports): IoLayout {
     sensorsSize: at(12),
     brake: base + at(13),
     safeTorqueOff: base + at(14),
+    modelLen: base + at(15),
+    model: base + at(16),
+    modelCapacity: at(17),
   };
 }
 
@@ -114,6 +130,48 @@ export class WasmNode {
     }
     new Float32Array(this.#exports.memory.buffer, this.#layout.config, packed.length).set(packed);
     this.#exports.nexus_init(linePosition);
+  }
+
+  /**
+   * Loads the joint's frozen learned model (B11), packed by `packPhnnModel`.
+   * Throws with the node's reason if the node refuses it.
+   */
+  loadModel(words: Float32Array): void {
+    const layout = this.#layout;
+    if (words.length > layout.modelCapacity) {
+      throw new Error(`model is ${words.length} words; the node holds ${layout.modelCapacity}`);
+    }
+    new Float32Array(this.#exports.memory.buffer, layout.model, words.length).set(words);
+    new DataView(this.#exports.memory.buffer).setUint32(layout.modelLen, words.length, true);
+    const status = this.#exports.nexus_load_model();
+    if (status !== 0) {
+      const reasons = ["not started", "too short", "version", "wrong joint", "orders", "invalid"];
+      throw new Error(`node refused the model: ${reasons[status - 1] ?? status}`);
+    }
+  }
+
+  /**
+   * What the loaded learned model leaves unexplained of one motor-side balance (N·m), or
+   * NaN without a model. A diagnostic for checking the node against the trainer.
+   */
+  modelResidual(b: {
+    angle: number;
+    velocity: number;
+    acceleration: number;
+    twist: number;
+    twistRate: number;
+    applied: number;
+    temperature: number;
+  }): number {
+    return this.#exports.nexus_model_residual(
+      b.angle,
+      b.velocity,
+      b.acceleration,
+      b.twist,
+      b.twistRate,
+      b.applied,
+      b.temperature,
+    );
   }
 
   /**

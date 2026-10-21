@@ -19,7 +19,10 @@
 
 use core::cell::UnsafeCell;
 use core::mem::{offset_of, size_of};
-use nexus_node::{default_actuator, DefaultActuator, Inbox, NodeConfig, Outbox, SensorFrame};
+use nexus_node::{
+    default_actuator, DefaultActuator, Inbox, ModelError, MotorBalance, NodeConfig, Outbox, SensorFrame,
+    MODEL_WORDS,
+};
 
 /// Capacity of the inbox, bytes.
 pub const INBOX_BYTES: usize = 4096;
@@ -49,10 +52,14 @@ pub struct Io {
     pub inbox: [u8; INBOX_BYTES],
     /// Frames sent by the node, same record format.
     pub outbox: [u8; OUTBOX_BYTES],
+    /// Words of `model` in use, written by the harness before [`nexus_load_model`].
+    pub model_len: u32,
+    /// The joint's frozen learned model (B11), as exported by `learning/`.
+    pub model: [f32; MODEL_WORDS],
 }
 
 /// Fields whose offsets [`nexus_layout`] reports, in this order.
-const LAYOUT: [usize; 15] = [
+const LAYOUT: [usize; 18] = [
     offset_of!(Io, config),
     offset_of!(Io, sensors),
     offset_of!(Io, cycle),
@@ -68,6 +75,9 @@ const LAYOUT: [usize; 15] = [
     size_of::<SensorFrame>(),
     offset_of!(Io, brake),
     offset_of!(Io, safe_torque_off),
+    offset_of!(Io, model_len),
+    offset_of!(Io, model),
+    MODEL_WORDS,
 ];
 
 struct Instance {
@@ -103,6 +113,8 @@ static INSTANCE: Global = Global(UnsafeCell::new(Instance {
         safe_torque_off: 0,
         inbox: [0; INBOX_BYTES],
         outbox: [0; OUTBOX_BYTES],
+        model_len: 0,
+        model: [0.0; MODEL_WORDS],
     },
 }));
 
@@ -120,7 +132,8 @@ pub extern "C" fn nexus_io_ptr() -> *mut Io {
 
 /// Layout of the I/O block: offsets of config, sensors, cycle, `inbox_len`, `outbox_len`,
 /// torque, inbox, outbox (fields 0–7), then inbox and outbox capacity, total size, config
-/// size and sensor-frame size (8–12), then offsets of brake and safe-torque-off (13–14).
+/// size and sensor-frame size (8–12), then offsets of brake and safe-torque-off (13–14),
+/// then the offsets of `model_len` and `model` and the model capacity in words (15–17).
 /// Returns `u32::MAX` for an unknown field.
 #[unsafe(no_mangle)]
 pub extern "C" fn nexus_layout(field: u32) -> u32 {
@@ -133,6 +146,56 @@ pub extern "C" fn nexus_init(line_position: u32) {
     let instance = instance();
     let position = u8::try_from(line_position).unwrap_or(u8::MAX);
     instance.node = Some(default_actuator(instance.io.config, position));
+}
+
+/// Loads the learned model from `io.model[..io.model_len]` into the started node.
+/// Returns 0 on success, 1 if the node is not started, or 2 + the reason it was refused
+/// (too short, version, wrong joint, too many orders, invalid).
+#[unsafe(no_mangle)]
+pub extern "C" fn nexus_load_model() -> u32 {
+    let Instance { node, io } = instance();
+    let Some(node) = node.as_mut() else { return 1 };
+    let len = (io.model_len as usize).min(MODEL_WORDS);
+    match node.load_model(&io.model[..len]) {
+        Ok(()) => 0,
+        Err(reason) => {
+            2 + match reason {
+                ModelError::TooShort => 0,
+                ModelError::Version => 1,
+                ModelError::WrongJoint => 2,
+                ModelError::TooManyOrders => 3,
+                ModelError::Invalid => 4,
+            }
+        }
+    }
+}
+
+/// What the loaded learned model leaves unexplained of one motor-side balance, N·m, or
+/// NaN without a model. A diagnostic: tests use it to check the node's evaluation against
+/// the trainer's. Datasheet inertia and stiffness are not used by the learned model.
+#[unsafe(no_mangle)]
+#[allow(clippy::too_many_arguments)]
+pub extern "C" fn nexus_model_residual(
+    angle: f32,
+    velocity: f32,
+    acceleration: f32,
+    twist: f32,
+    twist_rate: f32,
+    applied: f32,
+    temperature: f32,
+) -> f32 {
+    let Some(node) = instance().node.as_ref() else { return f32::NAN };
+    let balance = MotorBalance {
+        angle,
+        velocity,
+        acceleration,
+        twist,
+        twist_rate,
+        applied,
+        inertia: 0.0,
+        stiffness: 0.0,
+    };
+    node.learned_residual(&balance, temperature).unwrap_or(f32::NAN)
 }
 
 /// Runs one bus cycle: reads sensors, cycle and inbox; writes torque and outbox.

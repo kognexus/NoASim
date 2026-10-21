@@ -8,8 +8,8 @@
 //! other joint's, so the candidate with the strongest coherent amplitude is the source.
 //!
 //! The signal differs by candidate. For itself a node uses its *motor-side residual*: the
-//! torque its motor really produced (`I·α − gear torque + friction`) minus what it
-//! commanded. Vibration of the arm appears on both sides of that balance and cancels, so the
+//! torque its motor really produced (`I·α − gear torque + friction`, from the joint's
+//! model of itself, `dynamics.rs`) minus what it commanded. Vibration of the arm appears on both sides of that balance and cancels, so the
 //! residual holds only what arises inside this actuator. For a neighbour it uses the
 //! vibration it feels (high-passed gear torque).
 //!
@@ -33,6 +33,7 @@
 //! **Fault.** If neighbours still feel it after the deadline, the joint reports a fault.
 
 use crate::config::NodeConfig;
+use crate::dynamics::{DynamicsModel, MotorBalance};
 use crate::estimate::Estimate;
 use crate::filters::{HighPass, LowPass, LowPass2};
 use crate::neighbours::{Neighbourhood, Side};
@@ -53,9 +54,27 @@ const ORDER_BAND_HZ: (f32, f32) = (4.0, 100.0);
 /// vibration modes does not. Out of band the demodulator is frozen and this count leaks
 /// away, so a speed reversal pauses attribution instead of restarting it.
 const SETTLE_CYCLES: u32 = 4000;
-/// Share of its signal a candidate's angle-locked amplitude must explain (against the
-/// signal's RMS, 1 for a pure tone) before it is reported.
-const MIN_COHERENCE: f32 = 0.5;
+/// How far a candidate's angle-locked amplitude must stand above the noise next to it
+/// before it is reported. The noise is measured by a lock-in reference: the same
+/// demodulation, `REFERENCE_OFFSET_HZ` above the order's frequency. (Comparing with the
+/// signal's whole RMS instead let vibration of a lightweight arm, far from the order,
+/// hide a real ripple; NX-15 log.)
+const MIN_SNR: f32 = 3.0;
+/// A felt report only corroborates that the arm feels an order; the claimant's residual
+/// says who the source is. So it is made when either of two detectors sees the order:
+/// its share of the felt vibration (angle-locked amplitude against the vibration's RMS,
+/// 1 for a pure tone) passes `MIN_FELT_COHERENCE`, or it stands `MIN_FELT_SNR` above its
+/// lock-in reference. Coherence misses on a lightweight arm, whose links vibrate far from
+/// the order; the reference misses on a stiff arm, whose modes sit next to the mesh order.
+/// (The arm's modes ringing coherently made coherence useless for *naming*, NX-12; for
+/// corroboration that does no harm.)
+const MIN_FELT_COHERENCE: f32 = 0.5;
+const MIN_FELT_SNR: f32 = 1.5;
+/// How far above the order the reference listens, Hz: well outside the demodulators'
+/// 0.5 Hz bandwidth, so the order's own signal does not leak into it, and close enough to
+/// see the same noise. A fixed gap rather than a multiple of the order, so it holds at
+/// low order frequencies too.
+const REFERENCE_OFFSET_HZ: f32 = 3.0;
 /// The best candidate must beat the runner-up by this factor.
 const MIN_MARGIN: f32 = 1.5;
 /// Corner of the attribution demodulators' second-order low-pass, Hz. Every KX-6 joint has
@@ -83,6 +102,9 @@ const REPORT_FRESH_CYCLES: u32 = 800;
 const FELT_MEMORY_CYCLES: u32 = 8000;
 /// Oldest neighbour state a candidate's angle may come from, cycles.
 const MAX_ANGLE_AGE: u32 = 8;
+/// The reference's clock restarts every this many cycles (1000 s), keeping the f32 time
+/// precise; a whole number of reference periods fits, so the restart is seamless.
+const CLOCK_WRAP_CYCLES: u32 = 4_000_000;
 
 /// Locked-in amplitude of a signal at a phase.
 #[derive(Clone, Copy, Debug)]
@@ -91,6 +113,31 @@ struct Demodulator {
     q: LowPass2,
     /// In-band cycles, leaking away while out of band.
     in_band: u32,
+}
+
+/// A demodulator at an order and its lock-in reference just beside it.
+#[derive(Clone, Copy, Debug)]
+struct OrderTracker {
+    signal: Demodulator,
+    reference: Demodulator,
+}
+
+impl OrderTracker {
+    fn new(cutoff_hz: f32, dt: f32) -> Self {
+        Self { signal: Demodulator::new(cutoff_hz, dt), reference: Demodulator::new(cutoff_hz, dt) }
+    }
+
+    /// `phase` is the order's phase; `time` the node's clock, s.
+    fn update(&mut self, signal: f32, phase: f32, time: f32) {
+        self.signal.update(signal, phase);
+        let offset = core::f32::consts::TAU * REFERENCE_OFFSET_HZ * time;
+        self.reference.update(signal, phase + libm::fmodf(offset, core::f32::consts::TAU));
+    }
+
+    /// Amplitude at the order against the noise beside it.
+    fn snr(&self) -> f32 {
+        self.signal.amplitude() / self.reference.amplitude().max(f32::EPSILON)
+    }
 }
 
 impl Demodulator {
@@ -127,20 +174,27 @@ const CANDIDATES: [Candidate; 3] =
 struct History {
     /// Motor angle at k−1 and k−2, rad.
     angle: [f32; 2],
-    /// Gear torque at k−1, N·m.
-    gear_torque: f32,
-    /// Commands sent at k−1, k−2 and k−3, N·m.
-    command: [f32; 3],
+    /// Gear twist at k−1 and k−2, rad.
+    twist: [f32; 2],
+    /// Motor velocity at k−1, rad/s.
+    velocity: f32,
+    /// Commands sent at k−1 and k−2, N·m.
+    command: [f32; 2],
 }
 
 impl History {
     /// History of a joint that has been at rest in the state `e` with `command` applied.
     fn at(e: &Estimate, command: f32) -> Self {
-        Self { angle: [e.motor_angle; 2], gear_torque: e.gear_torque, command: [command; 3] }
+        Self {
+            angle: [e.motor_angle; 2],
+            twist: [e.gear_twist; 2],
+            velocity: e.motor_velocity,
+            command: [command; 2],
+        }
     }
 }
 
-/// The most coherent candidate seen this cycle and the coherence of the runner-up.
+/// The clearest candidate seen this cycle, by a score, and the runner-up's score.
 #[derive(Clone, Copy, Debug, Default)]
 struct Ranking {
     best: Option<(f32, Disturbance)>,
@@ -148,20 +202,20 @@ struct Ranking {
 }
 
 impl Ranking {
-    fn offer(&mut self, coherence: f32, d: Disturbance) {
+    fn offer(&mut self, score: f32, d: Disturbance) {
         match self.best {
-            Some((b, _)) if coherence <= b => self.runner_up = self.runner_up.max(coherence),
+            Some((b, _)) if score <= b => self.runner_up = self.runner_up.max(score),
             Some((b, _)) => {
                 self.runner_up = self.runner_up.max(b);
-                self.best = Some((coherence, d));
+                self.best = Some((score, d));
             }
-            None => self.best = Some((coherence, d)),
+            None => self.best = Some((score, d)),
         }
     }
 
-    /// The best candidate if it is coherent enough and clearly ahead of the runner-up.
-    fn confident(&self) -> Option<Disturbance> {
-        self.best.filter(|(c, _)| *c > MIN_COHERENCE && *c > MIN_MARGIN * self.runner_up).map(|(_, d)| d)
+    /// The best candidate if its score passes `min` and it is clearly ahead of the runner-up.
+    fn confident(&self, min: f32) -> Option<Disturbance> {
+        self.best.filter(|(score, _)| *score > min && *score > MIN_MARGIN * self.runner_up).map(|(_, d)| d)
     }
 }
 
@@ -190,8 +244,7 @@ pub struct SourceTracker {
     vibration_power: LowPass,
     residual_band: LowPass2,
     residual: HighPass,
-    residual_power: LowPass,
-    demods: [[Demodulator; 4]; 3],
+    demods: [[OrderTracker; 4]; 3],
     /// The motor-side balance one cycle back: motor angles at k−1 and k−2, gear torque at
     /// k−1, and the commands that acted over the two cycles around it.
     history: Option<History>,
@@ -224,8 +277,7 @@ impl SourceTracker {
             vibration_power: LowPass::new(DEMOD_LOWPASS_HZ, dt),
             residual_band: LowPass2::new(RESIDUAL_LOWPASS_HZ, dt),
             residual: HighPass::new(SIGNAL_HIGHPASS_HZ, dt),
-            residual_power: LowPass::new(DEMOD_LOWPASS_HZ, dt),
-            demods: [[Demodulator::new(DEMOD_LOWPASS_HZ, dt); 4]; 3],
+            demods: [[OrderTracker::new(DEMOD_LOWPASS_HZ, dt); 4]; 3],
             history: None,
             felt: [None; 4],
             correcting: None,
@@ -260,81 +312,103 @@ impl SourceTracker {
             .is_some_and(|at| now.wrapping_sub(at) < FELT_MEMORY_CYCLES)
     }
 
-    /// Runs one cycle. `command` is the torque the node commanded last cycle; `network`
-    /// says whether neighbours are tested and claims need corroboration; `correct` whether
-    /// a claimed disturbance is cancelled.
+    /// What `model` leaves unexplained of the motor-side balance, band-limited, N·m.
+    ///
+    /// The balance is taken at the previous cycle, where the encoder's second difference is
+    /// centred. With one cycle of actuation delay, the command sent at k−1 acts over
+    /// [k, k+1], so the cycles around k−1 felt the commands sent at k−2 and k−3.
+    fn motor_residual(&mut self, e: &Estimate, command: f32, model: &impl DynamicsModel) -> f32 {
+        let past = self.history.get_or_insert(History::at(e, command));
+        let balance = MotorBalance {
+            angle: past.angle[0],
+            velocity: past.velocity,
+            acceleration: (e.motor_angle - 2.0 * past.angle[0] + past.angle[1]) / (self.dt * self.dt),
+            twist: past.twist[0],
+            twist_rate: (e.gear_twist - past.twist[1]) / (2.0 * self.dt),
+            applied: f32::midpoint(past.command[0], past.command[1]),
+            inertia: self.inertia,
+            stiffness: self.gear_stiffness,
+        };
+        let unexplained = model.unexplained(&balance);
+        *past = History {
+            angle: [e.motor_angle, past.angle[0]],
+            twist: [e.gear_twist, past.twist[0]],
+            velocity: e.motor_velocity,
+            command: [command, past.command[0]],
+        };
+        self.residual_band.update(unexplained)
+    }
+
+    /// Runs one cycle. `command` is the torque the node commanded last cycle; `model` is
+    /// the joint's model of itself, whose residual the self-test uses; `network` says
+    /// whether neighbours are tested and claims need corroboration; `correct` whether a
+    /// claimed disturbance is cancelled.
     #[allow(clippy::too_many_arguments)]
     pub fn update(
         &mut self,
         own_id: NodeId,
         e: &Estimate,
         command: f32,
-        friction: f32,
+        model: &impl DynamicsModel,
         neighbours: &Neighbourhood,
         now: u32,
         network: bool,
         correct: bool,
     ) -> SourceOutput {
         let mut out = SourceOutput::default();
-        // Motor-side balance at the previous cycle, where the encoder's second difference is
-        // centred. With one cycle of actuation delay, the command sent at k−1 acts over
-        // [k, k+1], so the cycles around k−1 felt the commands sent at k−2 and k−3.
-        let past = self.history.get_or_insert(History::at(e, command));
-        let acceleration = (e.motor_angle - 2.0 * past.angle[0] + past.angle[1]) / (self.dt * self.dt);
-        let applied = f32::midpoint(past.command[1], past.command[2]);
-        let unexplained = self.inertia * acceleration - past.gear_torque + friction - applied;
-        *past = History {
-            angle: [e.motor_angle, past.angle[0]],
-            gear_torque: e.gear_torque,
-            command: [command, past.command[0], past.command[1]],
-        };
-        let unexplained = self.residual_band.update(unexplained);
+        let unexplained = self.motor_residual(e, command, model);
         let residual = self.residual.update(unexplained);
-        let residual_rms = libm::sqrtf(self.residual_power.update(residual * residual));
         let vibration = self.vibration.update(self.gear_stiffness * e.gear_twist);
         let vibration_rms = libm::sqrtf(self.vibration_power.update(vibration * vibration));
 
         // Attribution: coherent amplitude at every candidate's orders, locked to its angle.
-        // Best (coherence, amplitude, source, order) for this joint and for a neighbour, each
-        // with its runner-up; coherence is the amplitude against the RMS of its signal.
+        // This joint's own orders are ranked by how far they stand above the noise beside
+        // them; a neighbour's by the better of that and the share of the vibration they
+        // explain.
         let mut own = Ranking::default();
         let mut felt = Ranking::default();
         for (c, candidate) in CANDIDATES.iter().enumerate() {
-            let (id, angle, speed, orders, signal, rms) = match candidate {
-                Candidate::Own => {
-                    (own_id, e.motor_angle, e.motor_velocity, self.fingerprint, residual, residual_rms)
-                }
+            let (id, angle, speed, orders, signal) = match candidate {
+                Candidate::Own => (own_id, e.motor_angle, e.motor_velocity, self.fingerprint, residual),
                 Candidate::Neighbour(side) if network => {
                     let Some(n) = neighbours.get(*side) else { continue };
                     let Some(state) = n.fresh_state(now, MAX_ANGLE_AGE) else { continue };
                     let fingerprint = n.announce.fingerprint;
-                    (n.id, state.motor_angle, state.motor_velocity, fingerprint, vibration, vibration_rms)
+                    (n.id, state.motor_angle, state.motor_velocity, fingerprint, vibration)
                 }
                 Candidate::Neighbour(_) => continue,
             };
             for (k, order) in orders.iter().enumerate() {
-                let demod = &mut self.demods[c][k];
+                let tracker = &mut self.demods[c][k];
                 let frequency = order * libm::fabsf(speed) / core::f32::consts::TAU;
-                if *order <= 0.0 || frequency < ORDER_BAND_HZ.0 || frequency > ORDER_BAND_HZ.1 {
-                    demod.in_band = demod.in_band.saturating_sub(1);
+                let band = ORDER_BAND_HZ;
+                if *order <= 0.0 || frequency < band.0 || frequency + REFERENCE_OFFSET_HZ > band.1 {
+                    tracker.signal.in_band = tracker.signal.in_band.saturating_sub(1);
                     continue;
                 }
-                demod.in_band = (demod.in_band + 1).min(SETTLE_CYCLES);
-                demod.update(signal, order * angle);
-                let amplitude = demod.amplitude();
-                if !demod.settled() || amplitude <= self.threshold {
+                tracker.signal.in_band = (tracker.signal.in_band + 1).min(SETTLE_CYCLES);
+                #[allow(clippy::cast_precision_loss)]
+                let time = (now % CLOCK_WRAP_CYCLES) as f32 * self.dt;
+                tracker.update(signal, order * angle, time);
+                let amplitude = tracker.signal.amplitude();
+                if !tracker.signal.settled() || amplitude <= self.threshold {
                     continue;
                 }
-                let coherence = amplitude / (core::f32::consts::SQRT_2 * rms).max(f32::EPSILON);
-                let ranking = if *candidate == Candidate::Own { &mut own } else { &mut felt };
-                ranking.offer(coherence, Disturbance { source: id, order: *order, amplitude });
+                let report = Disturbance { source: id, order: *order, amplitude };
+                if *candidate == Candidate::Own {
+                    own.offer(tracker.snr(), report);
+                } else {
+                    let coherence = amplitude / (core::f32::consts::SQRT_2 * vibration_rms).max(f32::EPSILON);
+                    // Either detector at its own bar scores 1.
+                    felt.offer((coherence / MIN_FELT_COHERENCE).max(tracker.snr() / MIN_FELT_SNR), report);
+                }
             }
         }
         let phase = now % REPORT_EVERY;
         if phase == 0 {
-            out.report = felt.confident();
+            out.report = felt.confident(1.0);
         } else if phase == REPORT_EVERY / 2 {
-            let claim = own.confident().filter(|d| !network || self.felt_recently(d.order, now));
+            let claim = own.confident(MIN_SNR).filter(|d| !network || self.felt_recently(d.order, now));
             if let Some(claim) = claim {
                 self.claimed = self.order_index(claim.order);
                 self.first_claimed.get_or_insert(now);
@@ -386,6 +460,7 @@ impl SourceTracker {
 mod tests {
     use super::{Demodulator, SourceTracker};
     use crate::config::NodeConfig;
+    use crate::dynamics::NominalModel;
     use crate::estimate::Estimate;
     use crate::neighbours::Neighbourhood;
     use nexus_proto::NodeId;
@@ -419,7 +494,8 @@ mod tests {
                 gear_torque: -torque,
                 ..Estimate::default()
             };
-            let out = tracker.update(NodeId(3), &e, 0.0, 0.0, &Neighbourhood::default(), k, false, false);
+            let model = NominalModel::new(0.0, 0.0);
+            let out = tracker.update(NodeId(3), &e, 0.0, &model, &Neighbourhood::default(), k, false, false);
             reported = out.report.or(reported);
         }
         let report = reported.expect("a report");
