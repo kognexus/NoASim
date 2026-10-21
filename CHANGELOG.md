@@ -12,6 +12,9 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-18** Limits enforced in every joint: torque, position wall, speed (reference rate
+  limit plus a light brake) and thermal derating with a warning first; every limit
+  reported to the host the cycle it starts acting; thermal headroom published.
 - **NX-16, NX-17** Impact detection from external torque (gear-twist torque minus the
   IMU-measured dynamic chain) with commissioned thresholds, host heartbeat and comm-loss
   hold, and the impact policies: retreat and hold, E-stop with brake and safe torque off,

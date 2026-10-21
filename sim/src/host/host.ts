@@ -42,6 +42,8 @@ export interface TaskOptions {
 }
 
 export interface HostOptions {
+  /** Changes to the default limits sent to every node. */
+  readonly limits?: Partial<Limits>;
   /** Share of each node's peak torque the network term may use. */
   readonly networkTorqueShare?: number;
   /** Cycles without state before the host declares a node lost. */
@@ -95,7 +97,7 @@ export class Host {
     const share = options.networkTorqueShare ?? 0.25;
     this.discovery = new Discovery(
       {
-        limitsFor: (announce) => defaultLimits(announce, share),
+        limitsFor: (announce) => ({ ...defaultLimits(announce, share), ...options.limits }),
         watchdogCycles: options.watchdogCycles ?? 40,
       },
       options.events,

@@ -78,7 +78,14 @@ fn becomes_ready_with_limits_and_enforces_them() {
         Frame::Assign(host_frame(FrameKind::Assign, Destination::All), Assign { position: 1, id: NodeId(1) });
     let limits = Frame::Limits(
         host_frame(FrameKind::Limits, Destination::Node(NodeId(1))),
-        Limits { max_torque: 5.0, ..Limits::default() },
+        Limits {
+            max_torque: 5.0,
+            max_velocity: 10.0,
+            min_position: -3.0,
+            max_position: 3.0,
+            max_temperature: 120.0,
+            network_torque_share: 0.25,
+        },
     );
     tick(&mut node, 0, &at(0.0), &[assign, limits]);
     let (torque, frames) = tick(&mut node, 1, &at(1.0), &[]);

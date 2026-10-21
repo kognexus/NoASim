@@ -50,13 +50,13 @@ pub use reference::{
     InterpolationMode, Interpolator, Quintic, Reference, SplineInterpolator, StepInterpolator,
     SwitchableInterpolator,
 };
-pub use safety::{SafetySupervisor, TorqueLimiter};
+pub use safety::{thermal_headroom, LimitKind, LimitSupervisor, Limited, SafetySupervisor};
 pub use sensors::SensorFrame;
 pub use supervisor::{Directive, ImpactPolicy, Supervisor, SupervisorTiming};
 
 /// The node as currently assembled from the default stages.
 pub type DefaultActuator =
-    Actuator<EncoderEstimator, SwitchableInterpolator, JointController, NetworkDamper, TorqueLimiter>;
+    Actuator<EncoderEstimator, SwitchableInterpolator, JointController, NetworkDamper, LimitSupervisor>;
 
 /// Builds the default node for `config` at `line_position`.
 #[must_use]
@@ -69,7 +69,7 @@ pub fn default_actuator(config: NodeConfig, line_position: u8) -> DefaultActuato
             interpolator: SwitchableInterpolator::new(config.cycle_seconds()),
             controller: JointController::new(&config),
             damper: NetworkDamper::new(&config),
-            safety: TorqueLimiter,
+            safety: LimitSupervisor::default(),
         },
     )
 }

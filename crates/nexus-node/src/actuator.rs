@@ -10,14 +10,18 @@ use crate::impact::{ImpactDetector, Watchdog};
 use crate::io::{Inbox, Outbox};
 use crate::models::{ModelChoice, ModelSet};
 use crate::neighbours::{Neighbourhood, Side};
-use crate::reference::{InterpolationMode, Interpolator};
-use crate::safety::SafetySupervisor;
+use crate::reference::{InterpolationMode, Interpolator, Reference};
+use crate::safety::{thermal_headroom, SafetySupervisor};
 use crate::sensors::SensorFrame;
 use crate::supervisor::{Directive, ImpactPolicy, Supervisor, SupervisorTiming};
 use crate::vector::rotate;
 use nexus_proto::{
-    DampingMode, Destination, Frame, FrameKind, Header, Limits, NodeId, NodeState, Settings, StatusFlags,
+    DampingMode, Destination, Fault, FaultCode, Frame, FrameKind, Header, Limits, NodeId, NodeState,
+    Settings, StatusFlags,
 };
+
+/// Ambient temperature assumed for the thermal headroom, °C.
+const AMBIENT: f32 = 25.0;
 
 /// The gravity chain is shared every this many cycles (1 kHz at a 4 kHz bus).
 const CHAIN_PERIOD: u32 = 4;
@@ -61,6 +65,8 @@ pub struct Actuator<E, I, C, D, S> {
     directive: Directive,
     last_hold: f32,
     last_effort: f32,
+    limit_status: u16,
+    limited_reference: Option<f32>,
 }
 
 /// Outputs of a node besides its torque: the brake and the hardwired safe-torque-off line.
@@ -107,6 +113,8 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             directive: Directive::default(),
             last_hold: 0.0,
             last_effort: 0.0,
+            limit_status: 0,
+            limited_reference: None,
         }
     }
 
@@ -206,7 +214,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
                 outbox.push(&Frame::Fault(self.header(FrameKind::Fault, Destination::Host, cycle), fault));
             }
         }
-        let reference = self.directive.reference.unwrap_or(planned);
+        let reference = self.speed_limited(self.directive.reference.unwrap_or(planned));
         let feedforward =
             self.models.friction(reference.position, reference.velocity) + gravity.holding_torque;
         let control = self.stages.controller.torque(&estimate, &reference, feedforward);
@@ -218,11 +226,16 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
         };
         let cap = self.limits.network_torque_share * self.limits.max_torque;
         let damping = self.stages.damper.torque(self.settings.damping, &estimate, &context).clamp(-cap, cap);
-        let torque = if self.directive.safe_torque_off {
-            0.0
-        } else {
-            self.stages.safety.limit(control + damping, &estimate, &self.limits)
-        };
+        let limited = self.stages.safety.limit(control + damping, &estimate, &self.limits);
+        self.limit_status = limited.status;
+        if let Some(kind) = limited.started {
+            // Every limit the joint applies on its own is reported the cycle it starts (B6).
+            if self.id != NodeId::UNASSIGNED {
+                let fault = Fault { code: FaultCode::Limit, value: f32::from(kind as u8) };
+                outbox.push(&Frame::Fault(self.header(FrameKind::Fault, Destination::Host, cycle), fault));
+            }
+        }
+        let torque = if self.directive.safe_torque_off { 0.0 } else { limited.torque };
         self.last_damping = damping;
         if self.id != NodeId::UNASSIGNED {
             outbox.push(&self.state_frame(cycle, &estimate, torque));
@@ -285,6 +298,22 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
         }
     }
 
+    /// The reference, rate-limited to the host's speed limit (B6): the joint then follows a
+    /// slower reference instead of falling behind a fast one.
+    fn speed_limited(&mut self, reference: Reference) -> Reference {
+        let dt = self.config.cycle_seconds();
+        let max_step = self.limits.max_velocity * dt;
+        let previous = self.limited_reference.unwrap_or(reference.position);
+        let position = previous + (reference.position - previous).clamp(-max_step, max_step);
+        let limited = (position - reference.position).abs() > 1e-6;
+        self.limited_reference = Some(position);
+        Reference {
+            position,
+            velocity: reference.velocity.clamp(-self.limits.max_velocity, self.limits.max_velocity),
+            acceleration: if limited { 0.0 } else { reference.acceleration },
+        }
+    }
+
     /// The outer neighbour's gyro (the rate of this link's tip), in this housing frame.
     fn outer_rate(&self, cycle: u32, angle: f32) -> [f32; 3] {
         self.neighbours
@@ -305,7 +334,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
         if self.settings.damping != DampingMode::Off && self.last_damping != 0.0 {
             status |= StatusFlags::NETWORK_DAMPING;
         }
-        status |= self.directive.status;
+        status |= self.directive.status | self.limit_status;
         Frame::State(
             self.header(FrameKind::State, Destination::Neighbours, cycle),
             NodeState {
@@ -321,9 +350,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
                 torque_command: torque,
                 network_torque: self.last_damping,
                 temperature: e.temperature,
-                thermal_headroom: ((self.config.max_temperature - e.temperature)
-                    / self.config.max_temperature)
-                    .clamp(0.0, 1.0),
+                thermal_headroom: thermal_headroom(e.temperature, self.limits.max_temperature, AMBIENT),
                 tank_energy: self.stages.damper.tank_energy(),
                 outer_rate: self.outer_rate(cycle, e.output_angle),
             },

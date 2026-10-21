@@ -38,6 +38,14 @@ export const StatusFlags = {
   holding: 1 << 4,
   torqueOff: 1 << 5,
   derating: 1 << 6,
+  thermalWarning: 1 << 7,
+} as const;
+
+/** Which limit acted, in a `Limit` fault's value. */
+export const LimitKind = {
+  speed: 1,
+  position: 2,
+  thermal: 3,
 } as const;
 
 export interface Header {

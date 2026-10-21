@@ -142,6 +142,8 @@ impl StatusFlags {
     pub const TORQUE_OFF: u16 = 1 << 5;
     /// The node is derating (thermal or limit).
     pub const DERATING: u16 = 1 << 6;
+    /// Thermal headroom is low; derating will follow if it keeps falling.
+    pub const THERMAL_WARNING: u16 = 1 << 7;
 
     /// Returns `true` if every bit of `mask` is set.
     #[must_use]
