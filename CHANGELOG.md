@@ -12,6 +12,15 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-12** Report to source. Each joint announces its fingerprint (excitation orders)
+  and tests itself on its motor-side residual (produced minus commanded torque), which arm
+  vibration cannot reach. Neighbours broadcast the vibration they feel at each order. A
+  joint claims a disturbance when its residual shows the order and, in the network modes,
+  a neighbour feels it. In `NetworkWithSource` mode the claimant cancels it by
+  lag-compensated, angle-locked feed-forward (capped at 20 % of rated torque); if it is
+  still felt 2 s later, the claimant reports a source fault. H5 met; H7 in the ticket.
+  Felt vibration alone named the wrong joint most of the time (identical fingerprints,
+  coherent arm modes), so it corroborates instead of naming.
 - **NX-18** Limits enforced in every joint: torque, position wall, speed (reference rate
   limit plus a light brake) and thermal derating with a warning first; every limit
   reported to the host the cycle it starts acting; thermal headroom published.

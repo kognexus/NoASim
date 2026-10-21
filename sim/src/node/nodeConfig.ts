@@ -35,6 +35,8 @@ export interface NodeConfig {
   dampingLowpassHz: number;
   imuLowpassHz: number;
   impactThreshold: number;
+  fingerprint: readonly [number, number, number, number];
+  reportThreshold: number;
   modelVersion: number;
 }
 
@@ -68,6 +70,8 @@ export function packNodeConfig(c: NodeConfig): number[] {
     c.dampingLowpassHz,
     c.imuLowpassHz,
     c.impactThreshold,
+    ...c.fingerprint,
+    c.reportThreshold,
     c.modelVersion,
   ];
 }

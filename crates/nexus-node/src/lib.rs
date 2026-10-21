@@ -26,6 +26,7 @@ mod neighbours;
 mod reference;
 mod safety;
 mod sensors;
+mod source;
 mod supervisor;
 pub mod vector;
 
@@ -52,6 +53,7 @@ pub use reference::{
 };
 pub use safety::{thermal_headroom, LimitKind, LimitSupervisor, Limited, SafetySupervisor};
 pub use sensors::SensorFrame;
+pub use source::{SourceOutput, SourceTracker};
 pub use supervisor::{Directive, ImpactPolicy, Supervisor, SupervisorTiming};
 
 /// The node as currently assembled from the default stages.

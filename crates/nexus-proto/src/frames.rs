@@ -35,6 +35,8 @@ pub enum FrameKind {
     Ack = 10,
     /// A node reporting a fault to the host.
     Fault = 11,
+    /// A node naming the joint it believes causes a vibration it feels (B1b).
+    Disturbance = 12,
 }
 
 impl FrameKind {
@@ -51,6 +53,7 @@ impl FrameKind {
             9 => Self::Heartbeat,
             10 => Self::Ack,
             11 => Self::Fault,
+            12 => Self::Disturbance,
             other => return Err(DecodeError::UnknownKind(other)),
         })
     }
@@ -70,6 +73,7 @@ impl FrameKind {
             Self::Heartbeat => 0,
             Self::Ack => Ack::LEN,
             Self::Fault => Fault::LEN,
+            Self::Disturbance => Disturbance::LEN,
         }
     }
 }
@@ -340,11 +344,14 @@ pub struct Announce {
     pub link: [f32; 3],
     /// Nominal mass of the link (and the next housing), kg.
     pub link_mass: f32,
+    /// Disturbance fingerprint: the orders (cycles per output revolution) at which this
+    /// actuator can excite the arm, e.g. once per motor turn, gear mesh, torque ripple.
+    pub fingerprint: [f32; 4],
 }
 
 impl Announce {
     /// Payload length in bytes.
-    pub const LEN: usize = 4 + 10 * 4;
+    pub const LEN: usize = 4 + 14 * 4;
 
     fn write(&self, w: &mut Writer) {
         w.u8(self.position);
@@ -356,6 +363,9 @@ impl Announce {
         w.vec3(self.axis);
         w.vec3(self.link);
         w.f32(self.link_mass);
+        for order in self.fingerprint {
+            w.f32(order);
+        }
     }
 
     fn read(r: &mut Reader) -> Result<Self, DecodeError> {
@@ -369,6 +379,7 @@ impl Announce {
             axis: r.vec3()?,
             link: r.vec3()?,
             link_mass: r.f32()?,
+            fingerprint: [r.f32()?, r.f32()?, r.f32()?, r.f32()?],
         })
     }
 }
@@ -587,6 +598,37 @@ impl Fault {
     }
 }
 
+/// A report naming the joint that causes a vibration (B1b), sent to all.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Disturbance {
+    /// The joint named as the source.
+    pub source: NodeId,
+    /// The order (cycles per output revolution of the source) the vibration follows.
+    pub order: f32,
+    /// Coherent amplitude the reporter measures, N·m of gear torque.
+    pub amplitude: f32,
+}
+
+impl Disturbance {
+    /// Payload length in bytes.
+    pub const LEN: usize = 12;
+
+    fn write(self, w: &mut Writer) {
+        w.u8(self.source.0);
+        w.u8(0);
+        w.u16(0);
+        w.f32(self.order);
+        w.f32(self.amplitude);
+    }
+
+    fn read(r: &mut Reader) -> Result<Self, DecodeError> {
+        let source = NodeId(r.u8()?);
+        r.u8()?;
+        r.u16()?;
+        Ok(Self { source, order: r.f32()?, amplitude: r.f32()? })
+    }
+}
+
 /// Gravity chain data (B10), sent to the neighbours about once per millisecond.
 ///
 /// Vectors are in the sender's housing frame, which is its inner neighbour's link frame.
@@ -670,6 +712,8 @@ pub enum Frame {
     Ack(Header, Ack),
     /// See [`Fault`].
     Fault(Header, Fault),
+    /// See [`Disturbance`].
+    Disturbance(Header, Disturbance),
 }
 
 impl Frame {
@@ -687,7 +731,8 @@ impl Frame {
             | Self::Impact(h, _)
             | Self::Heartbeat(h)
             | Self::Ack(h, _)
-            | Self::Fault(h, _) => h,
+            | Self::Fault(h, _)
+            | Self::Disturbance(h, _) => h,
         }
     }
 
@@ -727,6 +772,7 @@ impl Frame {
             Self::Heartbeat(_) => {}
             Self::Ack(_, p) => p.write(&mut w),
             Self::Fault(_, p) => p.write(&mut w),
+            Self::Disturbance(_, p) => p.write(&mut w),
         }
         w.len()
     }
@@ -757,6 +803,7 @@ impl Frame {
             FrameKind::Heartbeat => Self::Heartbeat(header),
             FrameKind::Ack => Self::Ack(header, Ack::read(&mut r)?),
             FrameKind::Fault => Self::Fault(header, Fault::read(&mut r)?),
+            FrameKind::Disturbance => Self::Disturbance(header, Disturbance::read(&mut r)?),
         })
     }
 }

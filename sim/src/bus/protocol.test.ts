@@ -67,6 +67,7 @@ const SAMPLES: Record<string, Frame> = {
       axis: [0, 1, 0],
       link: [0, 0, 0.390625],
       linkMass: 1.625,
+      fingerprint: [9, 36, 864, 1],
     },
   },
   assign: { header: header(FrameKind.Assign, 0, 0xff), assign: { position: 4, id: 4 } },
@@ -85,6 +86,10 @@ const SAMPLES: Record<string, Frame> = {
   heartbeat: { header: header(FrameKind.Heartbeat, 0, 0xff), heartbeat: true },
   ack: { header: header(FrameKind.Ack, 0, 0xff), ack: { code: 0 } },
   fault: { header: header(FrameKind.Fault, 3, 0), fault: { code: 1, value: 2.5 } },
+  disturbance: {
+    header: header(FrameKind.Disturbance, 2, 0xff),
+    disturbance: { source: 3, order: 36, amplitude: 0.75 },
+  },
   chain: {
     header: header(FrameKind.Chain, 2, 0xfe),
     chain: {

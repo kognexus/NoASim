@@ -19,6 +19,7 @@ export const FrameKind = {
   Heartbeat: 9,
   Ack: 10,
   Fault: 11,
+  Disturbance: 12,
 } as const;
 export type FrameKind = (typeof FrameKind)[keyof typeof FrameKind];
 
@@ -103,6 +104,15 @@ export interface Announce {
   axis: Vec3f;
   link: Vec3f;
   linkMass: number;
+  /** Orders (cycles per output turn) this actuator can excite. */
+  fingerprint: [number, number, number, number];
+}
+
+/** A report naming the joint behind a vibration (B1b). */
+export interface Disturbance {
+  source: number;
+  order: number;
+  amplitude: number;
 }
 
 export interface Assign {
@@ -189,13 +199,14 @@ export type Frame =
   | { header: Header & { kind: typeof FrameKind.Impact }; impact: Impact }
   | { header: Header & { kind: typeof FrameKind.Heartbeat }; heartbeat: true }
   | { header: Header & { kind: typeof FrameKind.Ack }; ack: { code: number } }
-  | { header: Header & { kind: typeof FrameKind.Fault }; fault: Fault };
+  | { header: Header & { kind: typeof FrameKind.Fault }; fault: Fault }
+  | { header: Header & { kind: typeof FrameKind.Disturbance }; disturbance: Disturbance };
 
 const PAYLOAD_LEN: Record<FrameKind, number> = {
   [FrameKind.State]: 4 + 20 * 4,
   [FrameKind.Goal]: 16,
   [FrameKind.Limits]: 24,
-  [FrameKind.Announce]: 4 + 10 * 4,
+  [FrameKind.Announce]: 4 + 14 * 4,
   [FrameKind.Assign]: 4,
   [FrameKind.Settings]: 8,
   [FrameKind.Chain]: 19 * 4,
@@ -203,6 +214,7 @@ const PAYLOAD_LEN: Record<FrameKind, number> = {
   [FrameKind.Heartbeat]: 0,
   [FrameKind.Ack]: 4,
   [FrameKind.Fault]: 8,
+  [FrameKind.Disturbance]: 12,
 };
 
 /** Encoded length of a frame of `kind`, header included. */
@@ -311,7 +323,15 @@ export function encodeFrame(frame: Frame): Uint8Array {
     w.u8(a.position);
     w.u8(a.hasBrake ? 1 : 0);
     w.u16(a.modelVersion);
-    w.f32(a.gearRatio, a.ratedTorque, a.peakTorque, ...a.axis, ...a.link, a.linkMass);
+    w.f32(
+      a.gearRatio,
+      a.ratedTorque,
+      a.peakTorque,
+      ...a.axis,
+      ...a.link,
+      a.linkMass,
+      ...a.fingerprint,
+    );
   } else if ("settings" in frame) {
     const st = frame.settings;
     w.u8(st.damping);
@@ -337,6 +357,11 @@ export function encodeFrame(frame: Frame): Uint8Array {
     w.u8(0);
     w.u16(0);
     w.f32(frame.fault.value);
+  } else if ("disturbance" in frame) {
+    w.u8(frame.disturbance.source);
+    w.u8(0);
+    w.u16(0);
+    w.f32(frame.disturbance.order, frame.disturbance.amplitude);
   } else if ("chain" in frame) {
     const c = frame.chain;
     w.f32(
@@ -417,6 +442,7 @@ export function decodeFrame(bytes: Uint8Array): Frame {
         axis: r.vec3(),
         link: r.vec3(),
         linkMass: r.f32(),
+        fingerprint: [r.f32(), r.f32(), r.f32(), r.f32()],
       };
       return { header: { kind, source, destination, cycle }, announce };
     }
@@ -454,6 +480,13 @@ export function decodeFrame(bytes: Uint8Array): Frame {
       return { header: { kind, source, destination, cycle }, heartbeat: true };
     case FrameKind.Ack:
       return { header: { kind, source, destination, cycle }, ack: { code: r.u8() } };
+    case FrameKind.Disturbance: {
+      const named = r.u8();
+      r.u8();
+      r.u16();
+      const disturbance = { source: named, order: r.f32(), amplitude: r.f32() };
+      return { header: { kind, source, destination, cycle }, disturbance };
+    }
     case FrameKind.Fault: {
       const code = r.u8();
       r.u8();

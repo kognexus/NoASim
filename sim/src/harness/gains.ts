@@ -49,6 +49,19 @@ export interface ControlGains {
  */
 const DEFAULT_IMPACT_SHARE = 1.0;
 
+/** Coherent gear-torque amplitude that triggers a disturbance report, per rated N·m. */
+const REPORT_SHARE = 0.03;
+
+/**
+ * The orders (cycles per output turn) at which an actuator can excite the arm: once per
+ * motor turn, the gear mesh (taken as four per motor turn), the sixth electrical harmonic
+ * of torque ripple, and once per output turn (output bearing).
+ */
+export function fingerprintOf(joint: JointSpec): [number, number, number, number] {
+  const n = joint.actuator.gearRatio;
+  return [n, 4 * n, 6 * joint.actuator.electrical.polePairs * n, 1];
+}
+
 /** Defaults, tuned in NX-07 and NX-08 (see ADR-0003). */
 export const DEFAULT_GAINS: ControlGains = {
   naturalHz: 4,
@@ -107,6 +120,8 @@ export function nodeConfigFor(
     dampingLowpassHz: gains.dampingLowpassHz,
     imuLowpassHz: gains.imuLowpassHz,
     impactThreshold: DEFAULT_IMPACT_SHARE * a.ratedTorque,
+    fingerprint: fingerprintOf(joint),
+    reportThreshold: REPORT_SHARE * a.ratedTorque,
     modelVersion: 1,
   };
 }

@@ -12,6 +12,8 @@
  *
  * The node only ever receives its own sensor frame and its inbox.
  */
+import { DisturbedActuator } from "../actuators/disturbed.ts";
+import type { ActuatorEffect } from "../actuators/effects.ts";
 import { drawHiddenActuators, type DrawOptions } from "../actuators/families.ts";
 import { type BusOptions, EthercatBus, HOST_PORT } from "../bus/ethercatBus.ts";
 import { Host, type HostOptions } from "../host/host.ts";
@@ -58,7 +60,7 @@ export interface ArmSystemOptions {
 /** Everything belonging to one joint. */
 export interface JointRuntime {
   readonly index: number;
-  readonly physics: ActuatorPhysics;
+  physics: ActuatorPhysics;
   readonly sensors: JointSensors;
   readonly node: WasmNode;
   readonly frame: SensorFrame;
@@ -207,6 +209,20 @@ export class ArmSystem {
     }
     for (let k = 0; k < this.#substeps; k++) plant.step();
     this.#cycle++;
+  }
+
+  /** Adds `effect` to joint `index`'s actuator (ripple, a worn bearing, …). */
+  injectDisturbance(index: number, effect: ActuatorEffect): void {
+    const joint = this.joints[index];
+    if (!joint) throw new RangeError(`joint ${index} out of range`);
+    joint.physics = new DisturbedActuator(joint.physics, effect);
+  }
+
+  /** Removes every injected disturbance. */
+  clearDisturbances(): void {
+    for (const joint of this.joints) {
+      while (joint.physics instanceof DisturbedActuator) joint.physics = joint.physics.inner;
+    }
   }
 
   /** Releases the safe-torque-off line (a deliberate reset after a stop). */

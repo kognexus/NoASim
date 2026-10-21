@@ -16,15 +16,15 @@ mod frames;
 
 pub use codec::{DecodeError, Reader, Writer};
 pub use frames::{
-    Ack, Announce, Assign, Chain, DampingMode, Destination, Fault, FaultCode, Frame, FrameKind, Goal, Header,
-    Impact, Limits, NodeState, Settings, StatusFlags, HEADER_LEN, MAX_FRAME_LEN,
+    Ack, Announce, Assign, Chain, DampingMode, Destination, Disturbance, Fault, FaultCode, Frame, FrameKind,
+    Goal, Header, Impact, Limits, NodeState, Settings, StatusFlags, HEADER_LEN, MAX_FRAME_LEN,
 };
 
 /// Address of a node on the bus, assigned during discovery.
 ///
 /// Address `0` is reserved for the host; actuator nodes are numbered from the base
 /// outward, starting at `1`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NodeId(pub u8);
 
 impl NodeId {

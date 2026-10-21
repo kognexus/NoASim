@@ -66,6 +66,10 @@ pub struct NodeConfig {
     pub imu_lowpass_hz: f32,
     /// External torque that counts as an impact, N·m (commissioned from normal motion).
     pub impact_threshold: f32,
+    /// Disturbance fingerprint: orders (cycles per output turn) this actuator can excite.
+    pub fingerprint: [f32; 4],
+    /// Coherent gear-torque amplitude above which a node reports a disturbance source, N·m.
+    pub report_threshold: f32,
     /// Version of the node's dynamics model.
     pub model_version: f32,
 }
@@ -91,6 +95,7 @@ impl NodeConfig {
             axis: self.axis,
             link: self.link,
             link_mass: self.link_mass,
+            fingerprint: self.fingerprint,
         }
     }
 }
@@ -127,6 +132,8 @@ impl NodeConfig {
             damping_lowpass_hz: 1000.0,
             imu_lowpass_hz: 40.0,
             impact_threshold: 30.0,
+            fingerprint: [9.0, 36.0, 864.0, 1.0],
+            report_threshold: 0.5,
             model_version: 1.0,
         }
     }

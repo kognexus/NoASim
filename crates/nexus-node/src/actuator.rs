@@ -13,6 +13,7 @@ use crate::neighbours::{Neighbourhood, Side};
 use crate::reference::{InterpolationMode, Interpolator, Reference};
 use crate::safety::{thermal_headroom, SafetySupervisor};
 use crate::sensors::SensorFrame;
+use crate::source::SourceTracker;
 use crate::supervisor::{Directive, ImpactPolicy, Supervisor, SupervisorTiming};
 use crate::vector::rotate;
 use nexus_proto::{
@@ -67,6 +68,8 @@ pub struct Actuator<E, I, C, D, S> {
     last_effort: f32,
     limit_status: u16,
     limited_reference: Option<f32>,
+    source: SourceTracker,
+    last_torque: f32,
 }
 
 /// Outputs of a node besides its torque: the brake and the hardwired safe-torque-off line.
@@ -115,6 +118,8 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             last_effort: 0.0,
             limit_status: 0,
             limited_reference: None,
+            source: SourceTracker::new(&config),
+            last_torque: 0.0,
         }
     }
 
@@ -226,7 +231,33 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
         };
         let cap = self.limits.network_torque_share * self.limits.max_torque;
         let damping = self.stages.damper.torque(self.settings.damping, &estimate, &context).clamp(-cap, cap);
-        let limited = self.stages.safety.limit(control + damping, &estimate, &self.limits);
+        // Report to source (B1b): tell the others what we feel, claim what is ours, cancel it.
+        let network = matches!(self.settings.damping, DampingMode::Network | DampingMode::NetworkWithSource);
+        let correct = self.settings.damping == DampingMode::NetworkWithSource;
+        let friction = self.models.friction(estimate.motor_angle, estimate.motor_velocity);
+        let source = self.source.update(
+            self.id,
+            &estimate,
+            self.last_torque,
+            friction,
+            &self.neighbours,
+            cycle,
+            network,
+            correct,
+        );
+        if self.id != NodeId::UNASSIGNED {
+            if let Some(report) = source.report {
+                outbox.push(&Frame::Disturbance(
+                    self.header(FrameKind::Disturbance, Destination::All, cycle),
+                    report,
+                ));
+            }
+            if let Some(fault) = source.fault {
+                outbox.push(&Frame::Fault(self.header(FrameKind::Fault, Destination::Host, cycle), fault));
+            }
+        }
+        let limited =
+            self.stages.safety.limit(control + damping + source.compensation, &estimate, &self.limits);
         self.limit_status = limited.status;
         if let Some(kind) = limited.started {
             // Every limit the joint applies on its own is reported the cycle it starts (B6).
@@ -236,6 +267,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             }
         }
         let torque = if self.directive.safe_torque_off { 0.0 } else { limited.torque };
+        self.last_torque = torque;
         self.last_damping = damping;
         if self.id != NodeId::UNASSIGNED {
             outbox.push(&self.state_frame(cycle, &estimate, torque));
@@ -282,6 +314,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
                 );
             }
             Frame::Heartbeat(header) if header.source.is_host() => self.watchdog.feed(cycle),
+            Frame::Disturbance(header, report) => self.source.on_report(header.source, report, cycle),
             Frame::Ack(..) => self.supervisor.acknowledge(),
             Frame::Announce(header, announce) => {
                 self.neighbours.on_announce(self.line_position, header.source, announce);

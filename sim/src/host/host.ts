@@ -71,6 +71,14 @@ export class Host {
   readonly jointAngles = new Map<number, number>();
   /** Every fault the nodes reported, in order. */
   readonly faults: { cycle: number; node: number; code: number; value: number }[] = [];
+  /** Every disturbance report the nodes broadcast, in order. */
+  readonly disturbances: {
+    cycle: number;
+    node: number;
+    source: number;
+    order: number;
+    amplitude: number;
+  }[] = [];
   /** Every impact the nodes reported, in order. */
   readonly impacts: { cycle: number; node: number; score: number; evidence: number }[] = [];
   /** Whether the host sends its cyclic frame (switch off to emulate a dead host). */
@@ -78,6 +86,7 @@ export class Host {
   readonly #spec: ArmSpec;
   readonly #rng: Random;
   #motion: MotionController | undefined;
+  #jointMotion: ((cycle: number) => Frame[]) | undefined;
   /** Every frame the host received, decoded, for the current cycle (monitoring). */
   lastReceived: Frame[] = [];
   /** Frames queued by the application (settings, goals), sent on the next tick. */
@@ -169,6 +178,42 @@ export class Host {
     });
   }
 
+  /**
+   * Moves the joints along `angles(t)` (rad, t in seconds from now), as one goal per joint
+   * every `periodSeconds`, for joint-level interpolation. For tests and demos that need
+   * every joint turning.
+   */
+  startJointMotion(
+    angles: (t: number) => readonly number[],
+    cycle: number,
+    periodSeconds = 0.02,
+  ): void {
+    const start = cycle;
+    const every = Math.round(periodSeconds * BUS_CYCLE_HZ);
+    this.applySettings({ interpolation: 1 });
+    this.#jointMotion = (now: number) => {
+      if ((now - start) % every !== 0) return [];
+      const due = now + every;
+      const t = (due - start) / BUS_CYCLE_HZ;
+      const q = angles(t);
+      const q1 = angles(t + 1e-3);
+      return q.map((angle, i) => ({
+        header: { kind: FrameKind.Goal, source: Address.host, destination: i + 1, cycle: now },
+        goal: {
+          dueCycle: due,
+          position: angle,
+          velocity: ((q1[i] ?? angle) - angle) / 1e-3,
+          sequence: 0,
+        },
+      }));
+    };
+  }
+
+  /** Stops a joint motion started with {@link startJointMotion}. */
+  stopJointMotion(): void {
+    this.#jointMotion = undefined;
+  }
+
   /** One host cycle: reads delivered records, returns records to send. */
   tick(cycle: number, inbox: Uint8Array): Uint8Array {
     this.lastReceived = decodeRecords(inbox).map(decodeFrame);
@@ -178,6 +223,8 @@ export class Host {
         this.faults.push({ cycle: f.header.cycle, node: f.header.source, ...f.fault });
       else if ("impact" in f)
         this.impacts.push({ cycle: f.header.cycle, node: f.header.source, ...f.impact });
+      else if ("disturbance" in f)
+        this.disturbances.push({ cycle: f.header.cycle, node: f.header.source, ...f.disturbance });
     }
     const out = this.discovery.handle(this.lastReceived, cycle);
     if (this.heartbeat) {
@@ -200,6 +247,7 @@ export class Host {
       });
     }
     if (this.#motion) out.push(...this.#motion.tick(cycle));
+    if (this.#jointMotion) out.push(...this.#jointMotion(cycle));
     for (const frame of this.#queue.splice(0))
       out.push({ ...frame, header: { ...frame.header, cycle } } as Frame);
     return encodeRecords(out.map(encodeFrame));

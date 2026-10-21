@@ -52,6 +52,11 @@ impl LowPass2 {
         let y = self.first.update(x);
         self.second.update(y)
     }
+    /// The current output.
+    #[must_use]
+    pub fn value(&self) -> f32 {
+        self.second.value()
+    }
 }
 
 /// First-order high-pass filter: passes vibration, removes slow motion and offsets.
