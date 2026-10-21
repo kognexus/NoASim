@@ -167,8 +167,9 @@ mod tests {
 /// Oldest neighbour state the network term will use, in bus cycles (B5 stale-data rule).
 pub const MAX_NEIGHBOUR_AGE: u32 = 8;
 
-/// Local damping plus, in the network modes, damping of link-tip motion measured by IMUs
-/// further out along the chain (B1a).
+/// Local damping, or in the network modes damping of link-tip motion measured by IMUs
+/// further out along the chain (B1a), with local damping as the fallback when that data is
+/// missing or stale, or the joint has no outer neighbour (B5).
 ///
 /// The outer neighbour's housing sits at the far end of this joint's link, so its gyro
 /// measures the rotation rate of the link tip; the outer neighbour also relays the rate of
@@ -260,8 +261,10 @@ impl Damper for NetworkDamper {
         if !network_on {
             return local;
         }
+        // With fresh neighbour data the network term replaces the local one; without it,
+        // the joint falls back to local damping (above).
         let gain = self.gain * self.posture_scale(context.outboard_inertia);
-        local + self.tank.pass(-gain * signal, e.output_velocity)
+        self.tank.pass(-gain * signal, e.output_velocity)
     }
 
     fn tank_energy(&self) -> f32 {
