@@ -190,6 +190,23 @@ export class Plant {
     this.#mujoco.mj_forward(this.#model, this.#data);
   }
 
+  /** Generalised accelerations at the current state and inputs (a copy; NX-28). */
+  acceleration(): Float64Array {
+    return Float64Array.from(this.#data.qacc as Float64Array);
+  }
+
+  /** The joint-space mass matrix at the current state, row-major `nv × nv` (NX-28). */
+  massMatrix(): Float64Array {
+    const nv = this.#model.nv;
+    const buffer = new this.#mujoco.DoubleBuffer(nv * nv);
+    try {
+      this.#mujoco.mj_fullM(this.#model, this.#data, buffer);
+      return Float64Array.from(buffer.GetView() as Float64Array);
+    } finally {
+      buffer.delete();
+    }
+  }
+
   /** Where joint `i`'s motor, gear and bending coordinates sit in {@link state}. */
   coordinates(i: number): { motor: number; gear: number; bend: readonly number[] } {
     const adr = this.#joint(i);

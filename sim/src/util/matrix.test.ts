@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { lqrGain, Matrix, solveDare } from "./matrix.ts";
+import { cholesky, lqrGain, Matrix, solveDare, symmetricEigen } from "./matrix.ts";
 
 describe("small matrices (NX-27)", () => {
   it("inverts", () => {
@@ -34,5 +34,26 @@ describe("small matrices (NX-27)", () => {
       x = [x[0]! + dt * x[1]!, x[1]! + dt * u];
     }
     expect(Math.hypot(x[0]!, x[1]!)).toBeLessThan(1e-6);
+  });
+
+  it("factors and diagonalises a symmetric matrix (NX-28)", () => {
+    const a = Matrix.from([
+      [4, 1, 0],
+      [1, 3, 1],
+      [0, 1, 2],
+    ]);
+    const l = cholesky(a);
+    const back = l.times(l.transpose());
+    for (let i = 0; i < 3; i++)
+      for (let j = 0; j < 3; j++) expect(back.get(i, j)).toBeCloseTo(a.get(i, j), 12);
+    const { values, vectors } = symmetricEigen(a);
+    expect(values[0]).toBeLessThan(values[1]!);
+    values.forEach((lambda, k) => {
+      for (let i = 0; i < 3; i++) {
+        let av = 0;
+        for (let j = 0; j < 3; j++) av += a.get(i, j) * vectors.get(j, k);
+        expect(av).toBeCloseTo(lambda * vectors.get(i, k), 10);
+      }
+    });
   });
 });

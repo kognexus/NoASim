@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { DampingMode } from "../bus/protocol.ts";
-import { KX6L } from "../plant/kx6.ts";
+import { KX6_HOME, KX6L, withInitialAngles } from "../plant/kx6.ts";
 import { loadMujoco, type Mujoco } from "../plant/mujoco.ts";
 import { dampingWork } from "../scenarios/energy.ts";
 import { housingShake } from "../scenarios/rest.ts";
@@ -96,5 +96,34 @@ describe("network damping on the lightweight arm (NX-11)", () => {
     // Joint 2 relays joint 3's gyro (the tip of link 2); it must be moving after the tap.
     const relayed = states.get(2)?.outerRate ?? [0, 0, 0];
     expect(Math.hypot(...relayed)).toBeGreaterThan(1e-3);
+  });
+
+  it("fades a late neighbour out instead of switching it off: no torque steps on a lossy bus (NX-28)", async () => {
+    // Seed 33 with 20 % lost frames and 4 cycles of jitter stepped the network torque by
+    // 4.4 N·m in one cycle when it switched a stale neighbour off.
+    const system = await arm("network", {
+      spec: withInitialAngles(KX6L, KX6_HOME),
+      seed: 33,
+      bus: { latencyCycles: 2, jitterCycles: 4, dropRate: 0.2 },
+    });
+    const last = new Map<number, number>();
+    let largest = 0;
+    const step = system.step.bind(system);
+    system.step = () => {
+      step();
+      for (const frame of system.host.lastReceived) {
+        if (!("state" in frame) || frame.header.source > 4) continue;
+        const before = last.get(frame.header.source);
+        const now = frame.state.networkTorque;
+        if (before !== undefined) largest = Math.max(largest, Math.abs(now - before));
+        last.set(frame.header.source, now);
+      }
+    };
+    const result = tapTest(system, {
+      recordSeconds: 3,
+      beforeTap: (s) => s.host.applySettings({ damping: DampingMode.network }),
+    });
+    expect(largest).toBeLessThan(1.5);
+    expect(result.settlingTime).toBeLessThan(0.35);
   });
 });

@@ -29,6 +29,12 @@ export interface IdealDesign {
   readonly tankJ?: number;
   /** Act on the state this many bus cycles old (a bus between the plant and it). */
   readonly delayCycles?: number;
+  /**
+   * Let joint i use only the coordinates of joints within this many places of it (its
+   * own motor, gear and link; 1: also its neighbours'). The rest of the LQR gain is cut
+   * (NX-28). Unlimited when left out.
+   */
+  readonly reach?: number;
 }
 
 /** Linearisation step for angles (rad) and torques (N·m). */
@@ -36,7 +42,7 @@ const STATE_STEP = 1e-6;
 const TORQUE_STEP = 1e-3;
 
 /** `x' = Ax + Bu` around the plant's current state, one bus cycle per step. */
-function linearise(system: ArmSystem): { a: Matrix; b: Matrix; tool: Matrix } {
+export function linearise(system: ArmSystem): { a: Matrix; b: Matrix; tool: Matrix } {
   const plant = system.plant;
   if (Math.abs(plant.timestep * BUS_CYCLE_HZ - 1) > 1e-9) {
     throw new Error("the ideal controller assumes one physics step per bus cycle");
@@ -86,6 +92,27 @@ function linearise(system: ArmSystem): { a: Matrix; b: Matrix; tool: Matrix } {
   return { a, b, tool };
 }
 
+/**
+ * The plant linearised where it holds, with the joints' own position loops closed:
+ * `τ = −K·(motor + twist) − D·(their rates) + rotor damping` (`control.rs`).
+ */
+export function heldPlant(
+  system: ArmSystem,
+  configs: readonly NodeConfig[],
+): { held: Matrix; b: Matrix; tool: Matrix } {
+  const { a, b, tool } = linearise(system);
+  const nq = a.rows / 2;
+  const joints = new Matrix(b.cols, a.rows);
+  configs.forEach((c, i) => {
+    const { motor, gear } = system.plant.coordinates(i);
+    joints.set(i, motor, -c.stiffness);
+    joints.set(i, gear, -c.stiffness);
+    joints.set(i, nq + motor, -c.damping);
+    joints.set(i, nq + gear, -c.damping + c.rotorDamping);
+  });
+  return { held: a.plus(b.times(joints)), b, tool };
+}
+
 export class IdealController {
   readonly #gain: Matrix;
   readonly #caps: number[];
@@ -106,19 +133,9 @@ export class IdealController {
    * damping off. `configs` are the joints' own gains, which the design takes as given.
    */
   static design(system: ArmSystem, configs: readonly NodeConfig[], design: IdealDesign) {
-    const { a, b, tool } = linearise(system);
-    const n = a.rows;
+    const { held, b, tool } = heldPlant(system, configs);
+    const n = held.rows;
     const nq = n / 2;
-    // The joints' position loops: τ = −K·(motor + twist) − D·(their rates) + rotor damping.
-    const joints = new Matrix(b.cols, n);
-    configs.forEach((c, i) => {
-      const { motor, gear } = system.plant.coordinates(i);
-      joints.set(i, motor, -c.stiffness);
-      joints.set(i, gear, -c.stiffness);
-      joints.set(i, nq + motor, -c.damping);
-      joints.set(i, nq + gear, -c.damping + c.rotorDamping);
-    });
-    const held = a.plus(b.times(joints));
     // Cost: tool distance² + speedWeight·tool speed² (+ a trace of every state).
     const c = new Matrix(6, n);
     for (let i = 0; i < 3; i++) {
@@ -131,7 +148,21 @@ export class IdealController {
     const r = new Matrix(b.cols, b.cols);
     configs.forEach((cfg, i) => r.set(i, i, design.torqueWeight / cfg.ratedTorque ** 2));
     const caps = configs.map((cfg) => design.torqueShare * cfg.peakTorque);
-    return new IdealController(lqrGain(held, b, q, r), caps, design);
+    const gain = lqrGain(held, b, q, r);
+    if (design.reach !== undefined) {
+      const owner = new Array<number>(nq).fill(-1);
+      configs.forEach((_, j) => {
+        const c = system.plant.coordinates(j);
+        for (const k of [c.motor, c.gear, ...c.bend]) owner[k] = j;
+      });
+      for (let i = 0; i < gain.rows; i++) {
+        for (let k = 0; k < n; k++) {
+          const j = owner[k % nq] ?? -1;
+          if (j < 0 || Math.abs(j - i) > design.reach) gain.set(i, k, 0);
+        }
+      }
+    }
+    return new IdealController(gain, caps, design);
   }
 
   /** Acts on `system` from now on, holding it to its state now. */

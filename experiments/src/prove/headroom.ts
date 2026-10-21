@@ -2,7 +2,7 @@
  * Headroom for learned damping (NX-27): the joints' damping against an ideal controller
  * that sees the plant's whole state (`experiments/src/headroom.ts`). Reported.
  */
-import { measureHeadroom, type TapScore } from "../headroom.ts";
+import { COUPLINGS, measureHeadroom, type TapScore } from "../headroom.ts";
 import type { Finding, ProveContext } from "./findings.ts";
 
 const cell = (s: TapScore | undefined) =>
@@ -21,6 +21,12 @@ export async function headroom(ctx: ProveContext): Promise<Finding> {
     ["ideal", "Ideal (whole state, no delay)"],
     ["ideal, no tank", "Ideal without the energy tank"],
     ["ideal, 1 cycle late", "Ideal, one bus cycle late"],
+    ["ideal, two joints either side", "Ideal, each joint seeing two joints either side"],
+    ["ideal, neighbours only", "Ideal, each joint seeing its neighbours only"],
+    ...COUPLINGS.map(
+      (k) =>
+        [`network + neighbour coupling ${k}`, `Network + neighbour coupling, κ = ${k}`] as const,
+    ),
   ] as const;
   const arms = Object.keys(r.results);
   return {
@@ -42,7 +48,7 @@ export async function headroom(ctx: ProveContext): Promise<Finding> {
           `| ${label} | ${arms.map((a) => cell(r.results[a]?.[key])).join(" | ")} |`,
       ),
       "",
-      "The tank and a bus cycle of delay cost the ideal controller almost nothing: its advantage comes from acting on the whole arm's state at once, every joint coordinated, not from speed or from giving up passivity. On budget actuators, designed on the datasheet plant, it lowers the mean but is slow to stay within 0.5 mm: gear play and stiction are what a linear design ignores.",
+      "The tank and a bus cycle of delay cost the ideal controller almost nothing: its advantage comes from acting on the whole arm's state at once, every joint coordinated, not from speed or from giving up passivity. The neighbour rows are NX-28: cutting the ideal gain to each joint's neighbours keeps part of the gain but leaves a slow tail, two joints either side gets most of it, and a damper between neighbouring joints (from a colleague's derivation; passive with fresh data) adds at most a few percent on top of network damping, and makes the arm ring when strong. On budget actuators, designed on the datasheet plant, it lowers the mean but is slow to stay within 0.5 mm: gear play and stiction are what a linear design ignores.",
     ].join("\n"),
   };
 }

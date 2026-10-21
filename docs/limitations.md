@@ -43,6 +43,9 @@ What this repository shows and what it does not. Numbers are in [RESULTS.md](RES
   closed against a 70 % target, and two of six joints end worse than the datasheet. LuGre
   friction has an internal state the model lacks, and one commissioning run covers only
   part of the eccentric gear.
+- **Modes no joint reaches.** On the light arm, link bending at 55–69 Hz bends across
+  every joint axis; no joint's torque or sensors reach it, so no damping in the joints,
+  learned or not, can touch it. Only the structure's own damping does (NX-28).
 - **Budget actuators with gear play.** A joint estimates the torque it holds from its
   gear twist through its own model of the gear. With the datasheet model, play reads as
   load: on budget actuators the payload estimate was four times too high and the arm

@@ -45,6 +45,49 @@ is the argument, together with the evidence the H6 sweep gives.
   sampled controller being close enough to its continuous ideal, which the quietness and
   jitter checks test but do not prove.
 
+## The same argument in energy terms (NX-28)
+
+*Added 21 Oct 2026, after reviewing a colleague's Lyapunov derivation of nearest-neighbour
+damping.*
+
+Take the arm holding a fixed reference, with ω the joints' output rates. Its energy, the
+kinetic energy, gravity, the gear and link springs and the position loops' springs,
+
+```text
+H = ½ q̇ᵀ M(q) q̇ + V_gravity(q) + ½ Σ k_gear φ² + ½ Σ k_link b² + ½ Σ K_i (θ_i − θ_ref,i)²
+```
+
+changes as `Ḣ = −ωᵀ D ω − (gear and link damping) + ωᵀ τ_n`, where D is the diagonal of
+the joints' own damping gains (collocated: each acts on its own output rate) and `τ_n` is
+whatever else the joints add. Then:
+
+- **Collocated damping** (joint-local) adds to D: `Ḣ` only falls.
+- **A damper between neighbours**, `τ_i = −Σ_j c_ij (ω_i − ω_j)`, adds `−ωᵀ L ω`, with
+  `L = Σ_edges c_ij (e_i − e_j)(e_i − e_j)ᵀ` a weighted graph Laplacian, which is positive
+  semi-definite. It too can only take energy out, and cutting a link (an edge weight to
+  zero) keeps L positive semi-definite. A spring between neighbours' angles is not a
+  damper: it belongs in H, and adds no dissipation.
+- **The network term is neither.** It uses the neighbour's gyro (the link tip's rate),
+  so its power `−c_i ω_i s_i` has no fixed sign. That is why it passes the energy tank:
+  `∫ τ_n,i ω_i dt ≤ E_max` at every joint, measured at the joint's own port, so
+  `H(t) ≤ H(0) + N·E_max` whatever the signal.
+
+What the clean form needs and the bus breaks: a neighbour coupling is passive only while
+both joints act on the same velocities at the same time. With delay, jitter or loss each
+sees the other late, the power is no longer a square, and the guarantee is gone; the
+tank is what still holds. Fading a late neighbour out (NX-28) scales `τ_n` by a weight in
+[0, 1] and leaves the tank bound as it is.
+
+What "energy goes to zero" further needs (LaSalle): every mode must be reached by some
+dissipation. NX-28 measured this. On the light arm, link bending at 55–69 Hz is reached
+by no joint; it decays only through the structure's own damping. And with a moving
+reference the arm is not autonomous; the argument is about deviations from the plan, an
+engineering argument, not a proof.
+
+NX-28 also measured whether a neighbour damper is worth adding: at most a few percent on
+a tap, and the arm rings when it is strong (RESULTS.md, "Headroom"). Being passive is not
+the same as damping well.
+
 ## Consequences
 
 - H6 is measured as: (a) the damping work at every joint never exceeds `E_max`, and

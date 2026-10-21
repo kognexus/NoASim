@@ -1,8 +1,9 @@
 /**
  * `npm run prove`: measures every hypothesis of the plan (H1–H10), the actuator grades
- * (NX-26) and the headroom for learned damping (NX-27), from the code in this repository,
- * and writes docs/RESULTS.md with SVG plots in docs/results/. Deterministic: every run
- * uses fixed seeds, and the learned models are the committed ones.
+ * (NX-26), the headroom for learned damping (NX-27) and the modes joints can reach
+ * (NX-28), from the code in this repository, and writes docs/RESULTS.md with SVG plots
+ * in docs/results/. Deterministic: every run uses fixed seeds, and the learned models are
+ * the committed ones.
  *
  *   node experiments/src/prove.ts [--quick] [--only H1,H7]
  *
@@ -21,6 +22,7 @@ import { h6 } from "./prove/h6.ts";
 import { grades } from "./prove/grades.ts";
 import { h9 } from "./prove/h9.ts";
 import { headroom } from "./prove/headroom.ts";
+import { reach } from "./prove/reach.ts";
 import { openLab } from "./runner.ts";
 
 const quick = process.argv.includes("--quick");
@@ -55,6 +57,7 @@ const STEPS: [string[], () => Promise<Finding | Finding[]>][] = [
   [["H10b", "H10d"], () => h10bd(ctx)],
   [["Grades"], () => grades(ctx)],
   [["Headroom"], () => headroom(ctx)],
+  [["Reach"], () => reach(ctx)],
 ];
 
 const ORDER = [
@@ -76,6 +79,7 @@ const ORDER = [
   "H10d",
   "Grades",
   "Headroom",
+  "Reach",
 ];
 const findings: Finding[] = [];
 for (const [ids, step] of STEPS) {

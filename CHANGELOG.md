@@ -32,6 +32,11 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-28** From a colleague's derivation: which modes no joint can reach (link bending at
+  55–69 Hz on the light arm), the ceiling of a damper between neighbouring joints (a few
+  percent: not built), and how far information reach goes (two joints either side gets
+  most of the ideal). A late neighbour now fades out instead of switching off (torque
+  steps under loss with jitter 4.4 → 0.9 N·m). ADR-0004 restated in energy terms.
 - **NX-27** Headroom for learned damping: an ideal controller that sees the whole plant
   state with no delay (an LQR on the linearised arm, held to the joints' torque and
   energy budget) holds the tool 2.9–3.7× closer after a tap than network damping. The

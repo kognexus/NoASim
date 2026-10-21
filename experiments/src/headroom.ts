@@ -12,11 +12,17 @@
  * delay, to show where its advantage comes from. On the KX-6 it is also run on budget
  * actuators (designed on the datasheet model, as a joint would be).
  *
+ * NX-28 adds two questions about coordination: how far the ideal controller gets when
+ * joint i may use only the joints within one or two places of it, and what a damper
+ * between neighbouring joints (`sim/src/analysis/coupling.ts`) adds on top of network
+ * damping.
+ *
  *   node experiments/src/headroom.ts [--quick]
  *
  * Writes experiments/results/headroom.json. `npm run prove` calls {@link measureHeadroom}.
  */
 import { mkdir, writeFile } from "node:fs/promises";
+import { attachNeighbourCoupling } from "../../sim/src/analysis/coupling.ts";
 import { IdealController } from "../../sim/src/analysis/ideal.ts";
 import { DampingMode } from "../../sim/src/bus/protocol.ts";
 import { nodeConfigsFor } from "../../sim/src/harness/gains.ts";
@@ -50,7 +56,17 @@ export interface TapScore {
   readonly peakMm: number;
 }
 
-type Variant = TunedMode | "ideal" | "ideal, no tank" | "ideal, 1 cycle late";
+/** Neighbour coupling strengths tried, relative to the joints' network gains. */
+export const COUPLINGS = [0.1, 0.3, 1] as const;
+type Coupling = `network + neighbour coupling ${(typeof COUPLINGS)[number]}`;
+export type Variant =
+  | TunedMode
+  | "ideal"
+  | "ideal, no tank"
+  | "ideal, 1 cycle late"
+  | "ideal, neighbours only"
+  | "ideal, two joints either side"
+  | Coupling;
 interface Case {
   arm: string;
   spec: ArmSpec;
@@ -80,7 +96,15 @@ async function tap(
 ): Promise<TapScore> {
   const spec = withInitialAngles(c.spec, posture);
   const ideal = variant.startsWith("ideal");
-  const gains = tunedGains(c.key, ideal ? "off" : (variant as TunedMode));
+  const coupling = variant.startsWith("network + neighbour coupling")
+    ? Number(variant.split(" ").pop())
+    : undefined;
+  const tuned: TunedMode = ideal
+    ? "off"
+    : coupling !== undefined
+      ? "network"
+      : (variant as TunedMode);
+  const gains = tunedGains(c.key, tuned);
   const options = {
     spec,
     gains,
@@ -92,14 +116,22 @@ async function tap(
       direction,
       recordSeconds: 3,
       beforeTap: (s) => {
-        const mode = ideal ? DampingMode.off : (DampingMode[variant as TunedMode] as DampingMode);
-        s.host.applySettings({ damping: mode });
+        s.host.applySettings({ damping: DampingMode[tuned] });
+        const configs = nodeConfigsFor(spec, BUS_CYCLE_HZ, gains);
+        if (coupling !== undefined) attachNeighbourCoupling(s, configs, coupling, SHARE, TANK_J);
         if (!ideal) return;
-        const controller = IdealController.design(s, nodeConfigsFor(spec, BUS_CYCLE_HZ, gains), {
+        const reach =
+          variant === "ideal, neighbours only"
+            ? 1
+            : variant === "ideal, two joints either side"
+              ? 2
+              : undefined;
+        const controller = IdealController.design(s, configs, {
           ...design,
           torqueShare: SHARE,
           ...(variant === "ideal, no tank" ? {} : { tankJ: TANK_J }),
           ...(variant === "ideal, 1 cycle late" ? { delayCycles: 1 } : {}),
+          ...(reach !== undefined ? { reach } : {}),
         });
         controller.attach(s);
       },
@@ -147,7 +179,17 @@ export async function measureHeadroom(
     const row: Partial<Record<Variant, TapScore>> = {};
     const variants: Variant[] = c.actuators
       ? ["off", "local", "network", "ideal"]
-      : ["off", "local", "network", "ideal", "ideal, no tank", "ideal, 1 cycle late"];
+      : [
+          "off",
+          "local",
+          "network",
+          ...COUPLINGS.map((k): Coupling => `network + neighbour coupling ${k}`),
+          "ideal",
+          "ideal, no tank",
+          "ideal, 1 cycle late",
+          "ideal, neighbours only",
+          "ideal, two joints either side",
+        ];
     for (const variant of variants) {
       const scores: TapScore[] = [];
       for (const posture of Object.values(POSTURES))
@@ -163,7 +205,7 @@ export async function measureHeadroom(
       };
       const r = row[variant];
       log(
-        `headroom ${c.arm} ${variant.padEnd(20)} mean ${r.meanMm.toFixed(3)} mm, within 0.5 mm after ${r.settleS.toFixed(3)} s, peak ${r.peakMm.toFixed(2)} mm`,
+        `headroom ${c.arm} ${variant.padEnd(32)} mean ${r.meanMm.toFixed(3)} mm, within 0.5 mm after ${r.settleS.toFixed(3)} s, peak ${r.peakMm.toFixed(2)} mm`,
       );
     }
     results[c.arm] = row;

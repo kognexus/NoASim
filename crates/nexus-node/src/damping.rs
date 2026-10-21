@@ -27,7 +27,7 @@
 
 use crate::config::NodeConfig;
 use crate::estimate::Estimate;
-use crate::filters::{HighPass, LowPass2};
+use crate::filters::{HighPass, LowPass, LowPass2};
 use crate::neighbours::{Neighbourhood, Side};
 use nexus_proto::DampingMode;
 
@@ -196,7 +196,19 @@ impl Damper for LocalDamper {
 
 #[cfg(test)]
 mod tests {
-    use super::EnergyTank;
+    use super::{freshness, EnergyTank, FULL_WEIGHT_AGE, MAX_NEIGHBOUR_AGE};
+
+    #[test]
+    fn neighbour_data_fades_with_age() {
+        assert!((freshness(0) - 1.0).abs() < f32::EPSILON);
+        assert!((freshness(FULL_WEIGHT_AGE) - 1.0).abs() < f32::EPSILON);
+        assert!((freshness(6) - 2.0 / 3.0).abs() < 1e-6);
+        assert!(freshness(MAX_NEIGHBOUR_AGE).abs() < f32::EPSILON);
+        assert!(freshness(1000).abs() < f32::EPSILON);
+        for age in 0..MAX_NEIGHBOUR_AGE {
+            assert!(freshness(age + 1) <= freshness(age));
+        }
+    }
 
     #[test]
     fn tank_never_releases_more_than_it_took() {
@@ -216,9 +228,37 @@ mod tests {
 /// Oldest neighbour state the network term will use, in bus cycles (B5 stale-data rule).
 pub const MAX_NEIGHBOUR_AGE: u32 = 8;
 
+/// Neighbour data up to this old counts in full (normal latency and jitter); older data
+/// fades out linearly until [`MAX_NEIGHBOUR_AGE`] (NX-28), so the network term does not
+/// switch off and on in one cycle when frames go missing.
+pub const FULL_WEIGHT_AGE: u32 = 5;
+
+/// Corner of the smoothing of the neighbour weight, Hz: it follows sustained staleness,
+/// not each frame's arrival (which under jitter would modulate the torque).
+const WEIGHT_SMOOTHING_HZ: f32 = 20.0;
+
+/// Weight of neighbour data `age` cycles old: 1 up to [`FULL_WEIGHT_AGE`], falling to 0
+/// at [`MAX_NEIGHBOUR_AGE`].
+#[must_use]
+pub fn freshness(age: u32) -> f32 {
+    if age <= FULL_WEIGHT_AGE {
+        1.0
+    } else if age >= MAX_NEIGHBOUR_AGE {
+        0.0
+    } else {
+        #[allow(clippy::cast_precision_loss)] // ages are a few cycles
+        let weight = (MAX_NEIGHBOUR_AGE - age) as f32 / (MAX_NEIGHBOUR_AGE - FULL_WEIGHT_AGE) as f32;
+        weight
+    }
+}
+
 /// Local damping, or in the network modes damping of link-tip motion measured by IMUs
 /// further out along the chain (B1a), with local damping as the fallback when that data is
 /// missing or stale, or the joint has no outer neighbour (B5).
+///
+/// Neighbour data fades with its age ([`freshness`]): the torque blends the network
+/// term with local damping, all network at fresh data and all local beyond
+/// [`MAX_NEIGHBOUR_AGE`].
 ///
 /// The outer neighbour's housing sits at the far end of this joint's link, so its gyro
 /// measures the rotation rate of the link tip; the outer neighbour also relays the rate of
@@ -234,8 +274,8 @@ pub const MAX_NEIGHBOUR_AGE: u32 = 8;
 /// high-passed so commanded motion is left alone). The gain follows the posture: it
 /// scales with the inertia beyond the joint (from the gravity chain) relative to the
 /// inertia the gains were sized for, so the joints best placed to move the vibrating mass
-/// take the largest share. If the neighbour's data is late or missing the term drops out
-/// and the joint falls back to local damping (B5).
+/// take the largest share. As the neighbour's data gets late, the term fades out and the
+/// joint falls back to local damping (B5).
 #[derive(Clone, Copy, Debug)]
 pub struct NetworkDamper {
     local: LocalDamper,
@@ -248,6 +288,7 @@ pub struct NetworkDamper {
     reference: ReferenceSmoother,
     tank: EnergyTank,
     last_signal: f32,
+    weight: LowPass,
 }
 
 /// Bounds of the posture scaling of the network gain.
@@ -271,10 +312,11 @@ impl NetworkDamper {
             reference: ReferenceSmoother::new(dt),
             tank: EnergyTank::new(TANK_CAPACITY, dt),
             last_signal: 0.0,
+            weight: LowPass::new(WEIGHT_SMOOTHING_HZ, dt),
         }
     }
 
-    /// Latest network damping signal, rad/s (0 without a fresh neighbour).
+    /// Latest network damping signal, rad/s (the last one computed from fresh data).
     #[must_use]
     pub const fn signal(&self) -> f32 {
         self.last_signal
@@ -294,29 +336,26 @@ impl Damper for NetworkDamper {
     fn torque(&mut self, mode: DampingMode, e: &Estimate, context: &DampingContext) -> f32 {
         let local = if mode == DampingMode::Off { 0.0 } else { self.local.torque(mode, e, context) };
         let reference = self.reference.update(context.reference_velocity, context.reference_bandwidth_hz);
-        let network_on = matches!(mode, DampingMode::Network | DampingMode::NetworkWithSource);
-        let outer =
-            context.neighbours.get(Side::Outer).and_then(|n| n.fresh_state(context.now, MAX_NEIGHBOUR_AGE));
-        let Some(outer) = outer else {
-            self.last_signal = 0.0;
-            return local;
-        };
         // Relative to the own housing, the tip turns at this joint's rate plus the link's
         // bending; the commanded part of that is exactly the joint's reference velocity.
         let own = dot(e.gyro, self.axis) + reference;
-        let (hp, lp) = &mut self.tip_filter;
-        let tip = lp.update(hp.update(dot(outer.gyro, self.axis) - own));
-        let (hp, lp) = &mut self.relay_filter;
-        let relay = lp.update(hp.update(dot(outer.outer_rate, self.axis) - own));
-        let signal = tip + self.relay_weight * relay;
-        self.last_signal = signal;
-        if !network_on {
+        let network_on = matches!(mode, DampingMode::Network | DampingMode::NetworkWithSource);
+        let neighbour = context.neighbours.get(Side::Outer);
+        let weight = self.weight.update(neighbour.map_or(0.0, |n| freshness(n.age(context.now))));
+        if let Some(outer) = neighbour.and_then(|n| n.fresh_state(context.now, MAX_NEIGHBOUR_AGE)) {
+            let (hp, lp) = &mut self.tip_filter;
+            let tip = lp.update(hp.update(dot(outer.gyro, self.axis) - own));
+            let (hp, lp) = &mut self.relay_filter;
+            let relay = lp.update(hp.update(dot(outer.outer_rate, self.axis) - own));
+            self.last_signal = tip + self.relay_weight * relay;
+        }
+        if !network_on || neighbour.is_none() {
             return local;
         }
-        // With fresh neighbour data the network term replaces the local one; without it,
-        // the joint falls back to local damping (above).
+        // With fresh neighbour data the network term replaces the local one; as the data
+        // ages, local damping takes over, and the last signal fades out with the weight.
         let gain = self.gain * self.posture_scale(context.outboard_inertia);
-        self.tank.pass(-gain * signal, e.output_velocity)
+        weight * self.tank.pass(-gain * self.last_signal, e.output_velocity) + (1.0 - weight) * local
     }
 
     fn tank_energy(&self) -> f32 {
