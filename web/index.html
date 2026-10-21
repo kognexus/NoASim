@@ -45,27 +45,19 @@
             <output class="dev" title="Tool distance from where it should be">– mm</output>
           </div>
           <canvas class="view"></canvas>
-          <div class="arm-charts">
+          <div class="arm-bus">
             <h3>
-              Tool distance from target
+              Bus
               <span
                 class="help"
                 tabindex="0"
-                data-tip="How far the tool is from where the task wants it, over the last 5 s. Both arms' charts share one scale."
+                data-tip="This arm's host and six joints on the line. Colour: what each joint reports (green ready, blue network damping, amber holding, red fault, black torque off). Halos: non-cyclic frames (blue), disturbance reports (amber), impacts and faults (red). Below: frames per second by kind, and the event log."
                 >?</span
               >
             </h3>
-            <canvas class="chart distance"></canvas>
-            <h3>
-              Vibration felt by each joint
-              <span
-                class="help"
-                tabindex="0"
-                data-tip="What each joint's own IMU reports on the bus: its housing's rotation rate with slow, commanded motion filtered out (above 3 Hz), as an RMS over 50 ms. Both arms' charts share one scale."
-                >?</span
-              >
-            </h3>
-            <canvas class="chart vibration"></canvas>
+            <canvas class="bus"></canvas>
+            <table class="rates"></table>
+            <ol class="events"></ol>
           </div>
         </article>
         <article class="arm" data-side="1">
@@ -82,11 +74,11 @@
             <output class="dev" title="Tool distance from where it should be">– mm</output>
           </div>
           <canvas class="view"></canvas>
-          <div class="arm-charts">
-            <h3>Tool distance from target</h3>
-            <canvas class="chart distance"></canvas>
-            <h3>Vibration felt by each joint</h3>
-            <canvas class="chart vibration"></canvas>
+          <div class="arm-bus">
+            <h3>Bus</h3>
+            <canvas class="bus"></canvas>
+            <table class="rates"></table>
+            <ol class="events"></ol>
           </div>
         </article>
         <div id="busy" class="busy" hidden>Building the arms…</div>
@@ -95,6 +87,41 @@
         Drag to orbit, scroll to zoom, right-drag to pan: both views move together. Click a joint
         disc to select it.
       </p>
+
+      <section class="compare">
+        <div class="card">
+          <h2>
+            Tool distance from target
+            <span
+              class="help"
+              tabindex="0"
+              data-tip="How far each arm's tool is from where the task wants it, over the last 5 s, both arms on one chart."
+              >?</span
+            >
+          </h2>
+          <canvas id="distance" class="chart"></canvas>
+        </div>
+        <div class="card">
+          <h2>
+            Vibration at
+            <select id="vibration-joint" aria-label="Joint whose vibration is shown">
+              <option value="0">J1</option>
+              <option value="1" selected>J2</option>
+              <option value="2">J3</option>
+              <option value="3">J4</option>
+              <option value="4">J5</option>
+              <option value="5">J6</option>
+            </select>
+            <span
+              class="help"
+              tabindex="0"
+              data-tip="What the chosen joint's own IMU reports on the bus in each arm: its housing's rotation rate with slow, commanded motion filtered out (above 3 Hz), as an RMS over 50 ms. Clicking a joint disc in a 3D view also picks it here."
+              >?</span
+            >
+          </h2>
+          <canvas id="vibration" class="chart"></canvas>
+        </div>
+      </section>
 
       <section class="panel" aria-label="Controls">
         <fieldset>
@@ -246,26 +273,6 @@
           /></label>
           <label class="check"><input id="brakes" type="checkbox" /> Brakes</label>
         </fieldset>
-      </section>
-
-      <section class="card">
-        <h2>
-          Bus of the
-          <select id="bus-side" aria-label="Which arm's bus">
-            <option value="0">left</option>
-            <option value="1">right</option>
-          </select>
-          arm
-          <span
-            class="help"
-            tabindex="0"
-            data-tip="The host and the six joints on the line. Colour: what each joint reports (green ready, blue network damping, amber holding, red fault, black torque off). Halos: non-cyclic frames (blue), disturbance reports (amber), impacts and faults (red). Below: frames per second by kind, and the event log."
-            >?</span
-          >
-        </h2>
-        <canvas id="bus" class="bus"></canvas>
-        <table id="rates"></table>
-        <ol id="events" class="events"></ol>
       </section>
     </main>
     <script type="module" src="/src/main.ts"></script>

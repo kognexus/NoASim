@@ -76,35 +76,28 @@ let selected = -1;
 let twin: TwinRig | undefined;
 let monitors: BusMonitor[] = [];
 let meters: VibrationMeter[] = [];
-let busSide = 0;
 
 const armEls = [...document.querySelectorAll<HTMLElement>(".arm")];
 const views: ArmView[] = [];
 /** Chart samples kept: 5 s at one sample per 10 ms. */
 const CHART_SAMPLES = 500;
-/** Under each arm: its tool distance from target, and the vibration each joint feels. */
-const distanceCharts = armEls.map(
-  (el, i) =>
-    new StripChart(
-      $(".chart.distance", el),
-      [{ label: "", colourVar: i === 0 ? "--left" : "--right" }],
-      CHART_SAMPLES,
-      "mm",
-    ),
-);
 const JOINT_COUNT = 6;
-const vibrationCharts = armEls.map(
-  (el) =>
-    new StripChart(
-      $(".chart.vibration", el),
-      Array.from({ length: JOINT_COUNT }, (_, j) => ({
-        label: `J${j + 1}`,
-        colourVar: `--j${j + 1}`,
-      })),
-      CHART_SAMPLES,
-      "°/s",
-    ),
+/** One line per arm, in the arm's colour. */
+const ARM_SERIES = [
+  { label: "left arm", colourVar: "--left" },
+  { label: "right arm", colourVar: "--right" },
+];
+/** Both arms' tool distance from target, on one chart. */
+const distanceChart = new StripChart($("#distance"), ARM_SERIES, CHART_SAMPLES, "mm");
+/**
+ * Both arms' vibration at one joint, on one chart; one chart per joint keeps each joint's
+ * history, and the dropdown picks which is drawn.
+ */
+const vibrationCharts = Array.from(
+  { length: JOINT_COUNT },
+  () => new StripChart($("#vibration"), ARM_SERIES, CHART_SAMPLES, "°/s"),
 );
+let vibrationJoint = Number($<HTMLSelectElement>("#vibration-joint").value);
 
 // ---- building ---------------------------------------------------------------------------
 async function build(): Promise<void> {
@@ -133,12 +126,13 @@ async function build(): Promise<void> {
       view.attach(arm.system.plant);
     }
   });
-  for (const chart of [...distanceCharts, ...vibrationCharts]) chart.clear();
+  for (const chart of [distanceChart, ...vibrationCharts]) chart.clear();
   busy.hidden = true;
 }
 
 function selectJoint(joint: number): void {
   selected = joint;
+  if (joint >= 0) showVibrationOf(joint);
   for (const view of views) view.select(joint);
   $("#joint-label").textContent = joint >= 0 ? `J${joint + 1}` : "click a joint";
   for (const id of ["#ripple", "#damaged"]) $<HTMLButtonElement>(id).disabled = joint < 0;
@@ -151,12 +145,18 @@ function fillSelect(select: HTMLSelectElement, options: [string, number][], valu
   );
 }
 
-/** Each arm's distance chart names its damping mode. */
+/** The comparison charts name each arm by its damping mode. */
 function labelChart(): void {
-  sides.forEach((side, i) => {
+  const labels = sides.map((side, i) => {
     const mode = MODES.find(([, m]) => m === side.damping)?.[0] ?? "";
-    distanceCharts[i]?.setLabels([`${i === 0 ? "left" : "right"} arm: ${mode}`]);
+    return `${i === 0 ? "left" : "right"}: ${mode}`;
   });
+  for (const chart of [distanceChart, ...vibrationCharts]) chart.setLabels(labels);
+}
+
+function showVibrationOf(joint: number): void {
+  vibrationJoint = joint;
+  $<HTMLSelectElement>("#vibration-joint").value = String(joint);
 }
 
 armEls.forEach((el, i) => {
@@ -263,8 +263,8 @@ editorSlider(
   (v) => (shared = { ...shared, linkStiffness: v / 100 }),
 );
 
-$("#bus-side").addEventListener("change", (e) => {
-  busSide = Number((e.target as HTMLSelectElement).value);
+$("#vibration-joint").addEventListener("change", (e) => {
+  showVibrationOf(Number((e.target as HTMLSelectElement).value));
 });
 
 function busSlider(id: string, apply: (value: number) => string): void {
@@ -321,10 +321,9 @@ function frame(now: number): void {
         });
       }
       done += SAMPLE_CYCLES;
-      twin.arms.forEach((arm, i) => {
-        distanceCharts[i]?.push([arm.deviation() * 1e3]);
-        vibrationCharts[i]?.push(meters[i]?.levels() ?? []);
-      });
+      distanceChart.push(twin.arms.map((arm) => arm.deviation() * 1e3));
+      const levels = meters.map((m) => m.levels());
+      vibrationCharts.forEach((chart, j) => chart.push(levels.map((l) => l[j] ?? 0)));
     }
     rateWindow = {
       ...rateWindow,
@@ -335,16 +334,14 @@ function frame(now: number): void {
       views[i]?.render(monitors[i]?.status ?? new Map());
       $(".dev", armEls[i]).textContent = `${(arm.deviation() * 1e3).toFixed(2)} mm`;
     });
-    // Each kind of chart shares one scale across both arms, so they compare at a glance.
-    for (const charts of [distanceCharts, vibrationCharts]) {
-      const top = Math.max(...charts.map((c) => c.peak()));
-      for (const chart of charts) chart.draw(top);
-    }
-    const monitor = monitors[busSide];
-    if (monitor) {
-      drawBus($("#bus"), monitor, twin.arms[0].spec.joints.length);
-      if (now - rateWindow.shown > 500) showBusText(monitor);
-    }
+    distanceChart.draw();
+    vibrationCharts[vibrationJoint]?.draw();
+    monitors.forEach((monitor, i) => {
+      const el = armEls[i];
+      if (!el) return;
+      drawBus($(".bus", el), monitor, JOINT_COUNT);
+      if (now - rateWindow.shown > 500) showBusText(monitor, el);
+    });
     if (now - rateWindow.shown > 500) {
       $("#sim-time").textContent = `${(twin.arms[0].cycle / BUS_CYCLE_HZ).toFixed(1)} s simulated`;
       $("#rtf").textContent =
@@ -355,15 +352,16 @@ function frame(now: number): void {
   requestAnimationFrame(frame);
 }
 
-function showBusText(monitor: BusMonitor): void {
-  $("#rates").replaceChildren(
+/** The frame rates and event log under arm `el`. */
+function showBusText(monitor: BusMonitor, el: HTMLElement): void {
+  $(".rates", el).replaceChildren(
     ...rateRows(monitor).map(([name, rate]) => {
       const row = document.createElement("tr");
       row.innerHTML = `<td>${name}</td><td>${rate.toFixed(0)}/s</td>`;
       return row;
     }),
   );
-  $("#events").replaceChildren(
+  $(".events", el).replaceChildren(
     ...[...monitor.events].reverse().map((event) => {
       const li = document.createElement("li");
       li.dataset["severity"] = event.severity;

@@ -44,6 +44,12 @@ What this repository shows and what it does not. Numbers are in [RESULTS.md](RES
   friction has an internal state the model lacks, and one commissioning run covers only
   part of the eccentric gear.
 
+- **Network damping under a jittery policy.** During tasks driven by the VLA computer
+  (15 Hz goals with jitter), network damping makes the joints' housings vibrate 10–20 %
+  more than no damping. It reacts to the brief lag after each new goal. With a classic
+  controller's 1 kHz setpoints it makes no difference (NX-24). After a tap at rest it
+  helps, as H1 shows.
+
 ## Things the design deliberately does not do
 
 - **Impact detection is an early-warning layer.** Speed and force limits remain the
