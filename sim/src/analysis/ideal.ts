@@ -113,6 +113,41 @@ export function heldPlant(
   return { held: a.plus(b.times(joints)), b, tool };
 }
 
+/** The joint (0-based) each coordinate of the plant belongs to: its motor, gear or link. */
+export function coordinateOwners(system: ArmSystem, joints: number): number[] {
+  const nq = system.plant.state().length / 2;
+  const owner = new Array<number>(nq).fill(-1);
+  for (let j = 0; j < joints; j++) {
+    const c = system.plant.coordinates(j);
+    for (const k of [c.motor, c.gear, ...c.bend]) owner[k] = j;
+  }
+  return owner;
+}
+
+/**
+ * The LQR cost: tool distance² + speedWeight·tool speed² (+ a trace of every state),
+ * against torque relative to each joint's rated torque.
+ */
+export function designCost(
+  tool: Matrix,
+  configs: readonly NodeConfig[],
+  design: Pick<IdealDesign, "torqueWeight" | "speedWeight">,
+): { q: Matrix; r: Matrix } {
+  const nq = tool.cols;
+  const n = 2 * nq;
+  const c = new Matrix(6, n);
+  for (let i = 0; i < 3; i++) {
+    for (let k = 0; k < nq; k++) {
+      c.set(i, k, tool.get(i, k));
+      c.set(3 + i, nq + k, Math.sqrt(design.speedWeight) * tool.get(i, k));
+    }
+  }
+  const q = c.transpose().times(c).plus(Matrix.identity(n), 1e-10);
+  const r = new Matrix(configs.length, configs.length);
+  configs.forEach((cfg, i) => r.set(i, i, design.torqueWeight / cfg.ratedTorque ** 2));
+  return { q, r };
+}
+
 export class IdealController {
   readonly #gain: Matrix;
   readonly #caps: number[];
@@ -136,25 +171,10 @@ export class IdealController {
     const { held, b, tool } = heldPlant(system, configs);
     const n = held.rows;
     const nq = n / 2;
-    // Cost: tool distance² + speedWeight·tool speed² (+ a trace of every state).
-    const c = new Matrix(6, n);
-    for (let i = 0; i < 3; i++) {
-      for (let k = 0; k < nq; k++) {
-        c.set(i, k, tool.get(i, k));
-        c.set(3 + i, nq + k, Math.sqrt(design.speedWeight) * tool.get(i, k));
-      }
-    }
-    const q = c.transpose().times(c).plus(Matrix.identity(n), 1e-10);
-    const r = new Matrix(b.cols, b.cols);
-    configs.forEach((cfg, i) => r.set(i, i, design.torqueWeight / cfg.ratedTorque ** 2));
-    const caps = configs.map((cfg) => design.torqueShare * cfg.peakTorque);
+    const { q, r } = designCost(tool, configs, design);
     const gain = lqrGain(held, b, q, r);
     if (design.reach !== undefined) {
-      const owner = new Array<number>(nq).fill(-1);
-      configs.forEach((_, j) => {
-        const c = system.plant.coordinates(j);
-        for (const k of [c.motor, c.gear, ...c.bend]) owner[k] = j;
-      });
+      const owner = coordinateOwners(system, configs.length);
       for (let i = 0; i < gain.rows; i++) {
         for (let k = 0; k < n; k++) {
           const j = owner[k % nq] ?? -1;
@@ -162,7 +182,22 @@ export class IdealController {
         }
       }
     }
-    return new IdealController(gain, caps, design);
+    return IdealController.withGain(gain, configs, design);
+  }
+
+  /** A controller with a given gain (rows: joints; columns: the plant's state). */
+  static withGain(
+    gain: Matrix,
+    configs: readonly NodeConfig[],
+    design: Pick<IdealDesign, "torqueShare" | "tankJ" | "delayCycles">,
+  ): IdealController {
+    const caps = configs.map((cfg) => design.torqueShare * cfg.peakTorque);
+    return new IdealController(gain, caps, { torqueWeight: 0, speedWeight: 0, ...design });
+  }
+
+  /** The gain, rows: joints; columns: the plant's state. */
+  get gain(): Matrix {
+    return this.#gain;
   }
 
   /** Acts on `system` from now on, holding it to its state now. */

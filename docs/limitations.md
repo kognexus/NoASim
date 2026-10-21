@@ -43,6 +43,10 @@ What this repository shows and what it does not. Numbers are in [RESULTS.md](RES
   closed against a 70 % target, and two of six joints end worse than the datasheet. LuGre
   friction has an internal state the model lacks, and one commissioning run covers only
   part of the eccentric gear.
+- **Coordinated damping is not in the joints.** A gain that sees the joints up to two
+  places away would hold the tool 3–5× closer after a tap (on the true state), but run
+  on the joints' bus data it is not yet robust across postures (NX-29). The joints keep
+  network damping.
 - **Modes no joint reaches.** On the light arm, link bending at 55–69 Hz bends across
   every joint axis; no joint's torque or sensors reach it, so no damping in the joints,
   learned or not, can touch it. Only the structure's own damping does (NX-28).

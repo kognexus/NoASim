@@ -37,6 +37,11 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-29** Coordinated damping from joints up to two places away: a gain designed for
+  that structure matches the ideal controller on the true state (3–5× closer than
+  network damping after a tap), even for neighbours only. Run on the joints' bus data it
+  is not yet robust (better at one pose, oscillating at others), so it is not in the
+  node; the measurement problems found and the next step are in the ticket.
 - **NX-28** From a colleague's derivation: which modes no joint can reach (link bending at
   55–69 Hz on the light arm), the ceiling of a damper between neighbouring joints (a few
   percent: not built), and how far information reach goes (two joints either side gets

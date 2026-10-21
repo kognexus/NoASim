@@ -28,6 +28,7 @@ reported as missed.
 | Grades | Budget and premium actuators | Reported (NX-26): how each grade behaves, and what the network and the learned models change | network damping changes task vibration by −8 % (premium), +10 % (budget); learned models cut sweep deviation 1.95× (premium), 6.20× (budget) | · reported |
 | Headroom | Headroom for learned damping | Reported (NX-27): how much better any damping could do after a tap | KX-6L: ideal 2.9× lower mean distance than network; KX-6: ideal 3.7× lower mean distance than network | · reported |
 | Reach | Modes no joint can reach | Reported (NX-28): for each mode below 80 Hz, how much damping any one joint can add | reached by no joint: KX-6L home 55 Hz, KX-6L reach 67 Hz | · reported |
+| Coordinated | Coordinated damping from joints two places away | Reported (NX-29): a gain designed for each joint seeing the joints up to two places away, on the true state and on what the bus carries | KX-6L: 3.3× closer than network on the true state; KX-6: 4.7× closer than network on the true state; from the bus alone, not yet robust | · reported |
 
 ## H1: Networked damping settles vibration faster
 
@@ -357,7 +358,7 @@ Taps at rest as in H1 (two postures, two directions, unseen seeds). Per cell: me
 | Network + neighbour coupling, κ = 0.3 | 1.073 mm, 0.246 s, 10.4 mm | 0.938 mm, 0.248 s, 8.5 mm | — |
 | Network + neighbour coupling, κ = 1 | 2.836 mm, 1.607 s, 9.0 mm | 1.549 mm, 3.000 s, 7.4 mm | — |
 
-The tank and a bus cycle of delay cost the ideal controller almost nothing: its advantage comes from acting on the whole arm's state at once, every joint coordinated, not from speed or from giving up passivity. The neighbour rows are NX-28: cutting the ideal gain to each joint's neighbours keeps part of the gain but leaves a slow tail, two joints either side gets most of it, and a damper between neighbouring joints (from a colleague's derivation; passive with fresh data) adds at most a few percent on top of network damping, and makes the arm ring when strong. On budget actuators, designed on the datasheet plant, it lowers the mean but is slow to stay within 0.5 mm: gear play and stiction are what a linear design ignores.
+The tank and a bus cycle of delay cost the ideal controller almost nothing: its advantage comes from acting on the whole arm's state at once, every joint coordinated, not from speed or from giving up passivity. The neighbour rows are NX-28: cutting the ideal gain to each joint's neighbours keeps part of the gain but leaves a slow tail, two joints either side gets most of it (a gain designed for the structure instead of cut from the full one does far better, even for neighbours only: see Coordinated, NX-29), and a damper between neighbouring joints (from a colleague's derivation; passive with fresh data) adds at most a few percent on top of network damping, and makes the arm ring when strong. On budget actuators, designed on the datasheet plant, it lowers the mean but is slow to stay within 0.5 mm: gear play and stiction are what a linear design ignores.
 
 ## Reach: Modes no joint can reach
 
@@ -407,4 +408,24 @@ The arm linearised where it holds (MuJoCo's accelerations, the joints' position 
 
 Below 15 Hz the modes are the joints' own position loops, already 24–56 % damped, and the network signal reaches them about as well as each joint's own rate: one reason network and joint-local damping settle a tap about equally (H1). On the light arm, link bending at 55–69 Hz is reached by no joint (it bends across every joint axis); the structure's own damping (13–16 %) is all it has.
 
-<sub>Proof run took 36 min.</sub>
+## Coordinated: Coordinated damping from joints two places away
+
+**Target:** Reported (NX-29): a gain designed for each joint seeing the joints up to two places away, on the true state and on what the bus carries  
+**Measured:** KX-6L: 3.3× closer than network on the true state; KX-6: 4.7× closer than network on the true state; from the bus alone, not yet robust  
+**Verdict:** · reported
+
+Taps as in NX-27 (two directions, unseen seeds), each cell the mean tool distance over the first second and the time until the tool stays within 0.5 mm. Gains designed at the home pose; the stretched-out pose is not designed for. All inside the joints' torque cap and energy tank.
+
+| Variant | KX-6L, home | KX-6L, reach | KX-6, home | KX-6, reach |
+|---|---|---|---|---|
+| network | 0.721 mm, 0.173 s | 1.549 mm, 0.259 s | 0.667 mm, 0.190 s | 1.314 mm, 0.259 s |
+| structured, neighbours, true state | 0.239 mm, 0.067 s | 0.626 mm, 0.141 s | 0.178 mm, 0.055 s | 0.417 mm, 0.102 s |
+| structured, two either side, true state | 0.217 mm, 0.063 s | 0.586 mm, 0.136 s | 0.143 mm, 0.054 s | 0.370 mm, 0.096 s |
+| structured, two either side, true state 3 cycles late | 0.310 mm, 0.064 s | 1.126 mm, 1.560 s | 0.327 mm, 0.055 s | 0.534 mm, 0.127 s |
+| measured, two either side, from the bus | 0.476 mm, 0.173 s | 1.793 mm, 1.612 s | 0.669 mm, not within 3 s | 0.926 mm, 2.896 s |
+
+Linear-model cost at home, relative to no gain: KX-6L: full 0.070, neighbours 0.103, two either side 0.073, two either side, 3 cycles late 0.079, measured from the bus 0.118; KX-6: full 0.023, neighbours 0.028, two either side 0.024, two either side, 3 cycles late 0.029, measured from the bus 0.038.
+
+Designed for the structure (not cut from the full gain, as in NX-28), a gain that sees only the joints one or two places away matches the ideal controller on the true state, and holds up with three cycles of delay at the pose it was designed at. Run on the joints' state frames alone it is not yet robust: better than network damping at the home pose of the light arm, worse or oscillating elsewhere. The design treats the measurements as clean, delayed states; the joints' observers, the integration of the gyros and the position loops' actuation delay are not in its model. Not built into the node.
+
+<sub>Proof run took 32 min.</sub>
