@@ -9,6 +9,7 @@ import { DampingMode, ImpactPolicy } from "../../sim/src/bus/protocol.ts";
 import { ArmSystem } from "../../sim/src/harness/armSystem.ts";
 import type { ControlGains } from "../../sim/src/harness/gains.ts";
 import { tunedGains } from "../../sim/src/harness/tuned.ts";
+import type { TaskOptions } from "../../sim/src/host/host.ts";
 import type { Task } from "../../sim/src/host/tasks.ts";
 import { figureEight, pickAndPlace } from "../../sim/src/host/tasks.ts";
 import { BUS_CYCLE_HZ } from "../../sim/src/index.ts";
@@ -21,6 +22,18 @@ import { rippleOrder } from "../../sim/src/scenarios/source.ts";
 
 export type ArmName = "kx6" | "kx6l";
 export type TaskName = "hold" | "pick" | "eight";
+
+/**
+ * Which computer drives the tasks: a VLA policy computer (15 Hz goals with latency and
+ * jitter; the joints interpolate) or a classic real-time controller (the program's path,
+ * streamed as setpoints at 1 kHz). See `InterpolationMode` in `sim/src/host/host.ts`.
+ */
+export type RobotComputer = "vla" | "classic";
+
+const TASK_OPTIONS: Record<RobotComputer, TaskOptions> = {
+  vla: { mode: "joint-level" },
+  classic: { mode: "classic", classic: { loopHz: 1000 } },
+};
 
 /** What both arms share; changing it rebuilds them. */
 export interface SharedSettings {
@@ -105,6 +118,7 @@ export class ArmRig {
     start: 0,
   };
   #rest: Vec3;
+  #computer: RobotComputer = "vla";
 
   private constructor(system: ArmSystem, spec: ArmSpec) {
     this.system = system;
@@ -184,14 +198,16 @@ export class ArmRig {
     }
   }
 
-  startTask(name: TaskName): void {
+  /** Starts task `name`, driven by `computer` (default: the one of the last task). */
+  startTask(name: TaskName, computer: RobotComputer = this.#computer): void {
+    this.#computer = computer;
     if (name === "hold") {
       this.#task = { name, task: undefined, start: this.cycle };
       return;
     }
     const home = homePose(this.system);
     const task = name === "pick" ? pickAndPlace(home) : figureEight(home, 0.12, 4, 1);
-    this.system.host.startTask(task, this.cycle, { mode: "joint-level" });
+    this.system.host.startTask(task, this.cycle, TASK_OPTIONS[computer]);
     this.#task = { name, task, start: this.cycle };
   }
 

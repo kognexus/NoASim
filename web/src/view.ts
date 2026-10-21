@@ -60,16 +60,27 @@ export class ArmView {
   /** Called with the joint index (0-based) the user clicked, or −1. */
   onSelect: (joint: number) => void = () => undefined;
 
-  constructor(canvas: HTMLCanvasElement, plant: Plant) {
+  /**
+   * @param shareWith another view whose camera this one shares: orbiting, zooming or
+   *   panning either view moves both, so the two arms are always seen alike.
+   */
+  constructor(canvas: HTMLCanvasElement, plant: Plant, shareWith?: ArmView) {
     this.#canvas = canvas;
     this.#plant = plant;
     this.#renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.#renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
-    this.#camera = new THREE.PerspectiveCamera(40, 1, 0.01, 20);
-    this.#camera.up.set(0, 0, 1);
-    this.#camera.position.set(1.45, -1.55, 1.0);
-    this.#controls = new OrbitControls(this.#camera, canvas);
-    this.#controls.target.set(0.28, 0, 0.3);
+    if (shareWith) {
+      this.#camera = shareWith.#camera;
+      this.#controls = new OrbitControls(this.#camera, canvas);
+      // Both controls turn the camera about the same point.
+      this.#controls.target = shareWith.#controls.target;
+    } else {
+      this.#camera = new THREE.PerspectiveCamera(40, 1, 0.01, 20);
+      this.#camera.up.set(0, 0, 1);
+      this.#camera.position.set(1.45, -1.55, 1.0);
+      this.#controls = new OrbitControls(this.#camera, canvas);
+      this.#controls.target.set(0.28, 0, 0.3);
+    }
     this.#controls.update();
     this.#scene.background = new THREE.Color(
       getComputedStyle(canvas).getPropertyValue("--surface").trim() || "#ffffff",

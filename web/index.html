@@ -17,7 +17,15 @@
       </div>
       <div class="clock" aria-live="polite">
         <span id="sim-time">0.0 s</span>
-        <span id="rtf" title="Simulated time per real second">–</span>
+        <span
+          >&nbsp;<span id="rtf">–</span>
+          <span
+            class="help"
+            tabindex="0"
+            data-tip="Simulated time, and how fast it runs against real time. Below 1× your computer can't keep up with both arms at 4 kHz; the physics stays exact, it only runs slower."
+            >?</span
+          ></span
+        >
       </div>
     </header>
 
@@ -28,39 +36,124 @@
             <span class="swatch" style="background: var(--left)"></span>
             <select class="mode" aria-label="Left arm damping mode"></select>
             <select class="model" aria-label="Left arm model"></select>
+            <span
+              class="help"
+              tabindex="0"
+              data-tip="Damping mode: what each joint adds to its own position control. Joint control only: nothing. Joint-local: damps the motion its own gyro and encoder see. Network: damps its link's bending, measured by the next joint's gyro. Network + report to source: also finds and cancels ripple from its own actuator. Model: what each joint assumes about its own friction and cogging (datasheet, an online fit, or its learned model)."
+              >?</span
+            >
             <output class="dev" title="Tool distance from where it should be">– mm</output>
           </div>
           <canvas class="view"></canvas>
+          <div class="arm-charts">
+            <h3>
+              Tool distance from target
+              <span
+                class="help"
+                tabindex="0"
+                data-tip="How far the tool is from where the task wants it, over the last 5 s. Both arms' charts share one scale."
+                >?</span
+              >
+            </h3>
+            <canvas class="chart distance"></canvas>
+            <h3>
+              Vibration felt by each joint
+              <span
+                class="help"
+                tabindex="0"
+                data-tip="What each joint's own IMU reports on the bus: its housing's rotation rate with slow, commanded motion filtered out (above 3 Hz), as an RMS over 50 ms. Both arms' charts share one scale."
+                >?</span
+              >
+            </h3>
+            <canvas class="chart vibration"></canvas>
+          </div>
         </article>
         <article class="arm" data-side="1">
           <div class="arm-bar">
             <span class="swatch" style="background: var(--right)"></span>
             <select class="mode" aria-label="Right arm damping mode"></select>
             <select class="model" aria-label="Right arm model"></select>
+            <span
+              class="help"
+              tabindex="0"
+              data-tip="Same choices as the left arm. Set the two arms differently and compare them under the same disturbances."
+              >?</span
+            >
             <output class="dev" title="Tool distance from where it should be">– mm</output>
           </div>
           <canvas class="view"></canvas>
+          <div class="arm-charts">
+            <h3>Tool distance from target</h3>
+            <canvas class="chart distance"></canvas>
+            <h3>Vibration felt by each joint</h3>
+            <canvas class="chart vibration"></canvas>
+          </div>
         </article>
         <div id="busy" class="busy" hidden>Building the arms…</div>
       </section>
+      <p class="hint">
+        Drag to orbit, scroll to zoom, right-drag to pan: both views move together. Click a joint
+        disc to select it.
+      </p>
 
       <section class="panel" aria-label="Controls">
         <fieldset>
-          <legend>Task</legend>
+          <legend>
+            Task
+            <span
+              class="help"
+              tabindex="0"
+              data-tip="What both arms do. The task repeats until you pick another."
+              >?</span
+            >
+          </legend>
           <div class="seg" id="task">
             <button data-task="hold" aria-pressed="true">Hold</button>
             <button data-task="pick">Pick &amp; place</button>
             <button data-task="eight">Figure eight</button>
           </div>
+          <label
+            >Driven by
+            <select id="computer">
+              <option value="vla">VLA computer (15 Hz policy)</option>
+              <option value="classic">Classic controller (1 kHz)</option>
+            </select>
+            <span
+              class="help"
+              tabindex="0"
+              data-tip="Which robot computer sends the motion. VLA computer: a policy on a Thor-class machine sends a goal 15 times a second, late and with jitter, and each joint interpolates between goals itself. Classic controller: a real-time computer runs the task as a program and sends every joint a setpoint 1000 times a second. The joints are the same in both cases."
+              >?</span
+            >
+          </label>
         </fieldset>
         <fieldset>
-          <legend>Disturb both arms</legend>
-          <button id="tap">Tap the tool</button>
-          <button id="shake">Shake 3 s</button>
-          <button id="push" title="Turns on the reaction to impacts">Collide (push 0.4 s)</button>
+          <legend>
+            Disturb both arms
+            <span
+              class="help"
+              tabindex="0"
+              data-tip="Each button hits both arms at the same bus cycle, so any difference you see comes from their settings."
+              >?</span
+            >
+          </legend>
+          <button id="tap" title="200 N at the tool for 10 ms">Tap the tool</button>
+          <button id="shake" title="15 N sideways at the tool, near the arm's first mode, for 3 s">
+            Shake 3 s
+          </button>
+          <button id="push" title="150 N sideways for 0.4 s; turns on the reaction to impacts">
+            Collide (push 0.4 s)
+          </button>
         </fieldset>
         <fieldset>
-          <legend>Selected joint: <span id="joint-label">click a joint</span></legend>
+          <legend>
+            Selected joint: <span id="joint-label">click a joint</span>
+            <span
+              class="help"
+              tabindex="0"
+              data-tip="Gives the selected joint's actuator a torque ripple at the sixth electrical harmonic, on both arms. Torque ripple (10 % of rated) can be cancelled: with 'Network + report to source' the joint names itself and cancels it. Severe ripple (50 %) is beyond what the joint may cancel: it reports a fault about 2 s after naming itself. Ripple only shows while the joint turns, so run a task."
+              >?</span
+            >
+          </legend>
           <button id="ripple" disabled title="10 % of rated torque: the joint can cancel it">
             Torque ripple
           </button>
@@ -71,10 +164,18 @@
           >
             Severe ripple
           </button>
-          <button id="clear">Clear faults</button>
+          <button id="clear" title="Removes every injected ripple">Clear faults</button>
         </fieldset>
         <fieldset>
-          <legend>Safety</legend>
+          <legend>
+            Safety
+            <span
+              class="help"
+              tabindex="0"
+              data-tip="On impact: what every joint does when any joint feels a collision. Retreat and hold: back to where the arm was just before, then hold until ACK. E-stop with brakes: ramp down, brake, cut torque (joints without a brake refuse it). Float: give way. Stop in place: hold stiffly, for comparison. A tap counts as an impact too, so reaction is off until you turn it on. E-STOP pulls the hardwired safe-torque-off line; without brakes the arm falls. Reset rebuilds both arms."
+              >?</span
+            >
+          </legend>
           <label
             >On impact
             <select id="policy">
@@ -85,12 +186,20 @@
             </select>
           </label>
           <label class="check"><input id="react" type="checkbox" /> React to impacts</label>
-          <button id="ack">ACK</button>
-          <button id="estop" class="danger">E-STOP</button>
-          <button id="reset">Reset</button>
+          <button id="ack" title="Acknowledge: holding joints accept goals again">ACK</button>
+          <button id="estop" class="danger" title="Safe torque off on every joint">E-STOP</button>
+          <button id="reset" title="Rebuild both arms">Reset</button>
         </fieldset>
         <fieldset>
-          <legend>Bus</legend>
+          <legend>
+            Bus
+            <span
+              class="help"
+              tabindex="0"
+              data-tip="The wire between the joints and the host, changed live. Latency: bus cycles (250 µs each) before a frame arrives. Jitter: extra random delay. Lost frames: share of frames that never arrive. Beyond 2 ms of latency the network damping switches itself off."
+              >?</span
+            >
+          </legend>
           <label
             >Latency <output id="latency-out">1</output>
             <input id="latency" type="range" min="1" max="20" value="1"
@@ -105,7 +214,15 @@
           /></label>
         </fieldset>
         <fieldset>
-          <legend>Arm (rebuilds)</legend>
+          <legend>
+            Arm (rebuilds)
+            <span
+              class="help"
+              tabindex="0"
+              data-tip="Body: the lightweight KX-6L has flexible links that ring at about 6 Hz; the KX-6 is stiffer. Actuators: as on the datasheet, or a unit whose actuators nobody described, with each joint's learned model (KX-6 only). Payload at the tool, link bending stiffness and brakes: changing any of these rebuilds both arms."
+              >?</span
+            >
+          </legend>
           <label
             >Body
             <select id="arm">
@@ -131,24 +248,24 @@
         </fieldset>
       </section>
 
-      <section class="plots">
-        <div class="card">
-          <h2>Tool distance from target</h2>
-          <canvas id="chart" class="chart"></canvas>
-        </div>
-        <div class="card">
-          <h2>
-            Bus of the
-            <select id="bus-side" aria-label="Which arm's bus">
-              <option value="0">left</option>
-              <option value="1">right</option>
-            </select>
-            arm
-          </h2>
-          <canvas id="bus" class="bus"></canvas>
-          <table id="rates"></table>
-          <ol id="events" class="events"></ol>
-        </div>
+      <section class="card">
+        <h2>
+          Bus of the
+          <select id="bus-side" aria-label="Which arm's bus">
+            <option value="0">left</option>
+            <option value="1">right</option>
+          </select>
+          arm
+          <span
+            class="help"
+            tabindex="0"
+            data-tip="The host and the six joints on the line. Colour: what each joint reports (green ready, blue network damping, amber holding, red fault, black torque off). Halos: non-cyclic frames (blue), disturbance reports (amber), impacts and faults (red). Below: frames per second by kind, and the event log."
+            >?</span
+          >
+        </h2>
+        <canvas id="bus" class="bus"></canvas>
+        <table id="rates"></table>
+        <ol id="events" class="events"></ol>
       </section>
     </main>
     <script type="module" src="/src/main.ts"></script>

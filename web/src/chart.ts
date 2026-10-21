@@ -12,7 +12,7 @@ export interface Series {
 
 export class StripChart {
   readonly #canvas: HTMLCanvasElement;
-  readonly #series: readonly Series[];
+  #series: readonly Series[];
   readonly #samples: number[][];
   readonly #capacity: number;
   readonly #unit: string;
@@ -34,6 +34,11 @@ export class StripChart {
     this.#unit = unit;
   }
 
+  /** Renames the series (the legend), keeping their samples. */
+  setLabels(labels: readonly string[]): void {
+    this.#series = this.#series.map((s, i) => ({ ...s, label: labels[i] ?? s.label }));
+  }
+
   /** Adds one sample per series. */
   push(values: readonly number[]): void {
     values.forEach((v, i) => {
@@ -48,7 +53,13 @@ export class StripChart {
     for (const s of this.#samples) s.length = 0;
   }
 
-  draw(): void {
+  /** Largest value shown, for charts that share a scale. */
+  peak(): number {
+    return Math.max(0, ...this.#samples.flat().map(Math.abs));
+  }
+
+  /** Draws, with `top` as the scale's maximum (default: this chart's own peak). */
+  draw(top = this.peak()): void {
     const canvas = this.#canvas;
     const ratio = Math.min(2, window.devicePixelRatio);
     const w = canvas.clientWidth;
@@ -60,8 +71,7 @@ export class StripChart {
     const css = getComputedStyle(canvas);
     g.setTransform(ratio, 0, 0, ratio, 0, 0);
     g.clearRect(0, 0, w, h);
-    const top = Math.max(1e-9, ...this.#samples.flat().map(Math.abs));
-    const scale = niceCeiling(top);
+    const scale = niceCeiling(Math.max(1e-9, top));
     // Gridline at the top value and the zero line.
     g.strokeStyle = css.getPropertyValue("--grid");
     g.lineWidth = 1;
@@ -87,6 +97,18 @@ export class StripChart {
       });
       g.stroke();
     });
+    // Legend: one row, right-aligned at the top.
+    g.textAlign = "right";
+    let x = w - 4;
+    for (const series of [...this.#series].reverse()) {
+      g.fillStyle = css.getPropertyValue("--text");
+      g.fillText(series.label, x, 20);
+      x -= g.measureText(series.label).width + 6;
+      g.fillStyle = css.getPropertyValue(series.colourVar);
+      g.fillRect(x - 10, 11, 10, 10);
+      x -= 20;
+    }
+    g.textAlign = "left";
   }
 }
 

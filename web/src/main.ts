@@ -17,9 +17,11 @@ import {
   faultEffect,
   type SharedSettings,
   type SideSettings,
+  type RobotComputer,
   type TaskName,
   TwinRig,
 } from "./rig.ts";
+import { VibrationMeter } from "./vibration.ts";
 import { ArmView } from "./view.ts";
 
 const $ = <T extends HTMLElement>(selector: string, root: ParentNode = document): T => {
@@ -69,21 +71,39 @@ const sides: SideSettings[] = [
 ];
 let bus: BusOptions = { latencyCycles: 1, jitterCycles: 0, dropRate: 0 };
 let task: TaskName = "hold";
+let computer: RobotComputer = "vla";
 let selected = -1;
 let twin: TwinRig | undefined;
 let monitors: BusMonitor[] = [];
+let meters: VibrationMeter[] = [];
 let busSide = 0;
 
 const armEls = [...document.querySelectorAll<HTMLElement>(".arm")];
 const views: ArmView[] = [];
-const chart = new StripChart(
-  $("#chart"),
-  [
-    { label: "left", colourVar: "--left" },
-    { label: "right", colourVar: "--right" },
-  ],
-  500,
-  "mm",
+/** Chart samples kept: 5 s at one sample per 10 ms. */
+const CHART_SAMPLES = 500;
+/** Under each arm: its tool distance from target, and the vibration each joint feels. */
+const distanceCharts = armEls.map(
+  (el, i) =>
+    new StripChart(
+      $(".chart.distance", el),
+      [{ label: "", colourVar: i === 0 ? "--left" : "--right" }],
+      CHART_SAMPLES,
+      "mm",
+    ),
+);
+const JOINT_COUNT = 6;
+const vibrationCharts = armEls.map(
+  (el) =>
+    new StripChart(
+      $(".chart.vibration", el),
+      Array.from({ length: JOINT_COUNT }, (_, j) => ({
+        label: `J${j + 1}`,
+        colourVar: `--j${j + 1}`,
+      })),
+      CHART_SAMPLES,
+      "°/s",
+    ),
 );
 
 // ---- building ---------------------------------------------------------------------------
@@ -99,19 +119,21 @@ async function build(): Promise<void> {
   if (!left || !right) throw new Error("arms not built");
   twin = new TwinRig(left, right);
   monitors = twin.arms.map((arm) => new BusMonitor(arm.system.host));
-  twin.both((arm) => arm.startTask(task));
+  meters = twin.arms.map((arm) => new VibrationMeter(arm.system.host, arm.spec.joints.length));
+  twin.both((arm) => arm.startTask(task, computer));
   twin.arms.forEach((arm, i) => {
     const canvas = $<HTMLCanvasElement>(".view", armEls[i]);
     let view = views[i];
     if (!view) {
-      view = new ArmView(canvas, arm.system.plant);
+      // The right view shares the left one's camera: both always show the same angle.
+      view = new ArmView(canvas, arm.system.plant, views[0]);
       view.onSelect = selectJoint;
       views[i] = view;
     } else {
       view.attach(arm.system.plant);
     }
   });
-  chart.clear();
+  for (const chart of [...distanceCharts, ...vibrationCharts]) chart.clear();
   busy.hidden = true;
 }
 
@@ -129,6 +151,14 @@ function fillSelect(select: HTMLSelectElement, options: [string, number][], valu
   );
 }
 
+/** Each arm's distance chart names its damping mode. */
+function labelChart(): void {
+  sides.forEach((side, i) => {
+    const mode = MODES.find(([, m]) => m === side.damping)?.[0] ?? "";
+    distanceCharts[i]?.setLabels([`${i === 0 ? "left" : "right"} arm: ${mode}`]);
+  });
+}
+
 armEls.forEach((el, i) => {
   const side = sides[i];
   if (!side) return;
@@ -140,6 +170,7 @@ armEls.forEach((el, i) => {
     const next = { damping: Number(mode.value) as DampingMode, model: Number(model.value) };
     sides[i] = next;
     twin?.arms[i]?.apply(next);
+    labelChart();
   };
   mode.addEventListener("change", update);
   model.addEventListener("change", update);
@@ -149,13 +180,21 @@ for (const unit of UNITS) {
   $<HTMLSelectElement>("#unit").add(new Option(`Unit ${unit}: hidden, learned`, unit));
 }
 
+labelChart();
+
+$("#computer").addEventListener("change", (e) => {
+  // The switch takes effect with the next task; a running one restarts on the new computer.
+  computer = (e.target as HTMLSelectElement).value as RobotComputer;
+  twin?.both((arm) => arm.startTask(task, computer));
+});
+
 $("#task").addEventListener("click", (e) => {
   const button = (e.target as HTMLElement).closest<HTMLButtonElement>("button[data-task]");
   if (!button) return;
   task = button.dataset["task"] as TaskName;
   for (const b of $("#task").querySelectorAll("button"))
     b.setAttribute("aria-pressed", String(b === button));
-  twin?.both((arm) => arm.startTask(task));
+  twin?.both((arm) => arm.startTask(task, computer));
 });
 
 const sideways: Vec3 = [0, 1, 0];
@@ -250,6 +289,14 @@ busSlider("drop", (v) => {
 
 window.addEventListener("resize", () => views.forEach((v) => v.resize()));
 
+// Help tooltips open toward the side of the screen with room.
+for (const help of document.querySelectorAll<HTMLElement>(".help")) {
+  const place = () =>
+    help.classList.toggle("tip-left", help.getBoundingClientRect().left > window.innerWidth / 2);
+  help.addEventListener("mouseenter", place);
+  help.addEventListener("focus", place);
+}
+
 // ---- loop -------------------------------------------------------------------------------
 /** Real time spent stepping per frame at most, ms; simulated time slows if it is not enough. */
 const STEP_BUDGET_MS = 14;
@@ -268,10 +315,16 @@ function frame(now: number): void {
     while (done < wanted && performance.now() - started < STEP_BUDGET_MS) {
       for (let k = 0; k < SAMPLE_CYCLES; k++) {
         twin.run(1);
-        twin.arms.forEach((arm, i) => monitors[i]?.observe(arm.cycle));
+        twin.arms.forEach((arm, i) => {
+          monitors[i]?.observe(arm.cycle);
+          meters[i]?.observe();
+        });
       }
       done += SAMPLE_CYCLES;
-      chart.push(twin.arms.map((arm) => arm.deviation() * 1e3));
+      twin.arms.forEach((arm, i) => {
+        distanceCharts[i]?.push([arm.deviation() * 1e3]);
+        vibrationCharts[i]?.push(meters[i]?.levels() ?? []);
+      });
     }
     rateWindow = {
       ...rateWindow,
@@ -282,7 +335,11 @@ function frame(now: number): void {
       views[i]?.render(monitors[i]?.status ?? new Map());
       $(".dev", armEls[i]).textContent = `${(arm.deviation() * 1e3).toFixed(2)} mm`;
     });
-    chart.draw();
+    // Each kind of chart shares one scale across both arms, so they compare at a glance.
+    for (const charts of [distanceCharts, vibrationCharts]) {
+      const top = Math.max(...charts.map((c) => c.peak()));
+      for (const chart of charts) chart.draw(top);
+    }
     const monitor = monitors[busSide];
     if (monitor) {
       drawBus($("#bus"), monitor, twin.arms[0].spec.joints.length);

@@ -41,6 +41,9 @@ damping and the other to joint control only, then:
   joint names itself and cancels a fixable ripple; with an unfixable one, it reports a
   fault.
 - **Collide** to see the impact policy act on every joint at once.
+- **Driven by** switches the robot computer: a VLA policy computer (15 Hz goals, the joints
+  interpolate) or a classic real-time controller (setpoints at 1 kHz). The same joints
+  work with both.
 
 The bus view shows what travels between the joints.
 
@@ -58,7 +61,7 @@ the targets set in the plan before any code was written. In short:
 |---|---|
 | Impact reaction (H3, H4) | Every joint reacts within 1 cycle of detection. Retreat-and-hold, E-stop with brakes and the brake configuration check all work. No false stops in 15 fast tasks. |
 | Report to source (H5, H7) | A joint finds its own torque ripple, cancels it within 0.7 s or reports a fault 2 s after naming itself. The source is named 100/100 times. |
-| Learned model per joint (H10) | Passive by construction. Beats a fitted textbook model on every actuator family. On actuators nobody described, it cuts false fault claims from 6/30 to 1/30. |
+| Learned model per joint (H10) | Passive by construction. Beats a fitted textbook model on every actuator family. On actuators nobody described, it cuts false fault claims from 9 in 30 trials to 1. |
 | Network damping (H1, H6) | Stable and energy-bounded with 20 cycles of latency and 20 % lost frames. 2–2.5× faster settling than joint control alone, **but not faster than joint-local damping**: the 10×/3× targets are missed. |
 | Joint-level interpolation (H2) | Path error 2–5× lower in every task, but jerk only 1–3× lower (target 5×). |
 | Gravity from each IMU (H9) | Survives a 15° tilted or accelerating base far better than a level-base model; three joints and the payload estimate miss the 1 % / 5 % targets. |

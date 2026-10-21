@@ -18,6 +18,12 @@
   --host: #5d6673;
   --pulse: #2f6fd6;
   --danger: #c23b3b;
+  --j1: #2f6fd6;
+  --j2: #d9822b;
+  --j3: #3f8f6b;
+  --j4: #8a5cd6;
+  --j5: #c2416b;
+  --j6: #5d6673;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -41,6 +47,12 @@
     --host: #9aa3ae;
     --pulse: #6d9cf0;
     --danger: #ef6b6b;
+    --j1: #6d9cf0;
+    --j2: #f0a35e;
+    --j3: #5fb58f;
+    --j4: #b08cf0;
+    --j5: #ef7fa5;
+    --j6: #aab2bd;
   }
 }
 
@@ -165,7 +177,7 @@ main {
 
 .panel {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 12px;
 }
 
@@ -250,6 +262,7 @@ button.danger {
 .seg button {
   border-radius: 0;
   white-space: nowrap;
+  padding: 5px 8px;
 }
 
 .seg button:first-child {
@@ -345,4 +358,85 @@ button.danger {
   .view {
     height: 300px;
   }
+}
+
+.arm-charts {
+  padding: 4px 12px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.arm-charts h3 {
+  margin: 8px 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.arm-charts .chart {
+  height: 120px;
+}
+
+.hint {
+  margin: -6px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* A "?" with a tooltip, on hover or keyboard focus. */
+.help {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: var(--bg);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: help;
+  text-transform: none;
+  letter-spacing: 0;
+  vertical-align: middle;
+  flex: none;
+}
+
+.help:hover,
+.help:focus-visible {
+  color: var(--text);
+  border-color: var(--accent);
+  outline: none;
+}
+
+.help:hover::after,
+.help:focus-visible::after {
+  content: attr(data-tip);
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(320px, 80vw);
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+}
+
+/* In the right half of the screen, open to the left so the tip stays on screen. */
+.help.tip-left:hover::after,
+.help.tip-left:focus-visible::after {
+  left: auto;
+  right: -6px;
+  transform: none;
 }
