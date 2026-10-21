@@ -190,6 +190,22 @@ export class Plant {
     this.#mujoco.mj_forward(this.#model, this.#data);
   }
 
+  /**
+   * Runs `fn` with the hinges' dry friction switched off, then restores it (NX-30). At
+   * rest, MuJoCo's friction constraint is sticking, and a linearisation there sees it as
+   * an enormous damper; once a tap moves the arm, the joints slip and it is not.
+   */
+  withoutFriction<T>(fn: () => T): T {
+    const loss = this.#model.dof_frictionloss as Float64Array;
+    const saved = Float64Array.from(loss);
+    loss.fill(0);
+    try {
+      return fn();
+    } finally {
+      loss.set(saved);
+    }
+  }
+
   /** Generalised accelerations at the current state and inputs (a copy; NX-28). */
   acceleration(): Float64Array {
     return Float64Array.from(this.#data.qacc as Float64Array);
