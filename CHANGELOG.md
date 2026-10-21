@@ -7,6 +7,11 @@ All notable changes, one entry per ticket. The format follows
 
 ### Fixed
 
+- Demo: while holding, the tool distance was measured from where the tool happened to be
+  just after the arms were built, not from the commanded pose. An arm that sagged at once
+  (budget actuators, datasheet model: 21 mm low) looked perfect, and one whose payload
+  estimate was still settling (learned model) looked 14 mm off. Hold now uses the
+  commanded home pose, like the tasks; found by the owner.
 - **NX-26** With gear play, a joint read the play as load (datasheet stiffness × twist):
   on budget actuators its payload estimate was four times too high and the arm stood 1°
   low (25 mm tracking error, which damping cannot touch). A joint now takes its gear

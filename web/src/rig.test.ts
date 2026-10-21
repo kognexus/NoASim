@@ -77,13 +77,17 @@ describe("the demo's twin arms (NX-20)", () => {
   it("taps both arms at the same cycle; the networked arm moves less", async () => {
     const t = await twinArms();
     expect(t.arms[0].cycle).toBe(t.arms[1].cycle);
+    // Distance from where each tool was just before the tap: how much the tap moved it.
+    const before = t.arms.map((arm) => arm.system.plant.tcpPosition());
     t.both((arm) => arm.tap([0, 0.6, -0.8]));
     const peak = [0, 0];
     const sum = [0, 0];
     for (let k = 0; k < 0.5 * BUS_CYCLE_HZ; k += 40) {
       t.run(40);
       t.arms.forEach((arm, i) => {
-        const d = arm.deviation();
+        const p = arm.system.plant.tcpPosition();
+        const q = before[i] ?? p;
+        const d = Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
         peak[i] = Math.max(peak[i]!, d);
         sum[i]! += d;
       });

@@ -130,14 +130,20 @@ export class ArmRig {
     task: undefined,
     start: 0,
   };
-  #rest: Vec3;
+  /**
+   * Where the tool is commanded to hold: the home pose by nominal kinematics, the same
+   * reference the tasks are measured against. (Measured against where the tool happened to
+   * be just after the build, an arm that sagged at once looked perfect, and one whose
+   * payload estimate was still settling looked wrong.)
+   */
+  readonly #rest: Vec3;
   #computer: RobotComputer = "vla";
   readonly #ripples = new Map<number, RippleKind>();
 
   private constructor(system: ArmSystem, spec: ArmSpec) {
     this.system = system;
     this.spec = spec;
-    this.#rest = system.plant.tcpPosition();
+    this.#rest = homePose(system).position;
   }
 
   static async create(
@@ -165,7 +171,6 @@ export class ArmRig {
     const rig = new ArmRig(system, spec);
     rig.apply(side);
     system.run(0.5);
-    rig.#rest = system.plant.tcpPosition();
     return rig;
   }
 
@@ -178,7 +183,7 @@ export class ArmRig {
     return this.system.cycle;
   }
 
-  /** Where the tool should be now: at rest, or on the running task's path. */
+  /** Where the tool should be now: at the home pose, or on the running task's path. */
   target(): Vec3 {
     const { task, start } = this.#task;
     if (!task) return this.#rest;
