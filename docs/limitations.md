@@ -43,12 +43,13 @@ What this repository shows and what it does not. Numbers are in [RESULTS.md](RES
   closed against a 70 % target, and two of six joints end worse than the datasheet. LuGre
   friction has an internal state the model lacks, and one commissioning run covers only
   part of the eccentric gear.
+- **Joint-local damping under a classic controller.** During a classic controller's
+  pick and place, joint-local damping makes the outer joints vibrate up to 13 % more than
+  no damping and tracks 0.2 mm worse (measured in NX-25, unchanged by it). Likely cause,
+  not yet checked: a joint's own gyro also turns with the joints inside it, and alone it
+  cannot tell their commanded motion from vibration. Network damping takes the difference
+  of two gyros and does not show it.
 
-- **Network damping under a jittery policy.** During tasks driven by the VLA computer
-  (15 Hz goals with jitter), network damping makes the joints' housings vibrate 10–20 %
-  more than no damping. It reacts to the brief lag after each new goal. With a classic
-  controller's 1 kHz setpoints it makes no difference (NX-24). After a tap at rest it
-  helps, as H1 shows.
 
 ## Things the design deliberately does not do
 

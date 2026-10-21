@@ -12,7 +12,7 @@ use crate::io::{Inbox, Outbox};
 use crate::models::{ModelChoice, ModelSet};
 use crate::neighbours::{Neighbourhood, Side};
 use crate::phnn::{ModelError, PhnnModel};
-use crate::reference::{InterpolationMode, Interpolator, Reference};
+use crate::reference::{GoalRate, InterpolationMode, Interpolator, Reference};
 use crate::safety::{thermal_headroom, SafetySupervisor};
 use crate::sensors::SensorFrame;
 use crate::source::SourceTracker;
@@ -73,6 +73,7 @@ pub struct Actuator<E, I, C, D, S> {
     source: SourceTracker,
     last_torque: f32,
     excitation: Option<Excitation>,
+    goal_rate: GoalRate,
 }
 
 /// Outputs of a node besides its torque: the brake and the hardwired safe-torque-off line.
@@ -124,6 +125,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             source: SourceTracker::new(&config),
             last_torque: 0.0,
             excitation: None,
+            goal_rate: GoalRate::default(),
         }
     }
 
@@ -239,6 +241,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             now: cycle,
             outboard_inertia: self.gravity.outboard_inertia(),
             reference_velocity: reference.velocity,
+            reference_bandwidth_hz: self.goal_rate.hz(self.config.cycle_seconds()).map(|hz| 0.5 * hz),
         };
         let cap = self.limits.network_torque_share * self.limits.max_torque;
         let damping = self.stages.damper.torque(self.settings.damping, &estimate, &context).clamp(-cap, cap);
@@ -302,6 +305,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             }
             Frame::Goal(_, goal) if !self.directive.ignore_goals && self.excitation.is_none() => {
                 self.stages.interpolator.add_goal(goal, cycle);
+                self.goal_rate.arrived(cycle);
             }
             Frame::Settings(_, settings) => {
                 self.settings = *settings;

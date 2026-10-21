@@ -22,7 +22,7 @@ reported as missed.
 | H8 | Work moves off the host | Reported (no target) | host computations per second, central / joint-level (below) | · reported |
 | H9 | Each joint computes gravity correctly from its own IMU | Torque error ≤ 1 % of rated; drift with tilt clearly lower than a fixed-vertical model; payload within ±5 % | 3/6 joints within 1 %; tilt drift 0.37 vs 4.93 mm; payload 10 % | ◐ partly met |
 | H10a | A PHNN learns an actuator nobody described | On the sealed out-of-family actuator: closes ≥ 70 % of the Nominal-to-Oracle gap and beats RLS | sealed: 61 % of the gap closed; RLS structure -5 % | ◐ partly met |
-| H10b | The learned model improves the arm | PHNN measurably better than RLS; reported against Oracle | slow-sweep deviation from the datasheet-actuator arm: learned 0.108, datasheet 0.190, RLS 1.678 mrad (mean of 3 units) | ✔ met |
+| H10b | The learned model improves the arm | PHNN measurably better than RLS; reported against Oracle | slow-sweep deviation from the datasheet-actuator arm: learned 0.108, datasheet 0.190, RLS 1.681 mrad (mean of 3 units) | ✔ met |
 | H10c | The learned model is passive | Energy balance dH/dt ≤ input power on held-out trajectories; holds by construction, checked numerically | dissipation never negative (smallest 3.0e-11 W); balance closes to 1.4e-14 W on 24 joints | ✔ met |
 | H10d | A wrong model can't destabilise the arm | Closed loop with a deliberately corrupted or mismatched model: never unstable; the energy tank caps the network term | bounded in every case: yes; network term within its tank: yes | ✔ met |
 
@@ -120,7 +120,7 @@ KX-6, joint 3 sweeping at 0.3 rad/s, torque ripple at the sixth electrical harmo
 |---|---|---|---|---|
 | compensable, corrected (10 % of rated) | 1.05 s | — | 0.536 N·m | 0.70 s after the claim |
 | compensable, not corrected (10 % of rated) | 1.05 s | 3.10 s | 0.536 N·m | — |
-| beyond budget, corrected (50 % of rated) | 1.75 s | 3.80 s | 0.958 N·m | — |
+| beyond budget, corrected (50 % of rated) | 1.75 s | 3.80 s | 0.954 N·m | — |
 
 A joint claims a disturbance when its own motor-side residual shows the order clearly above a lock-in reference and a neighbour feels the order; it then cancels it by angle-locked feed-forward, capped at 20 % of rated torque. If a neighbour still feels it 2 s after the claim, the joint reports a fault.
 
@@ -246,25 +246,25 @@ The sealed family (LuGre friction with an internal state, an eccentric gear) was
 ## H10b: The learned model improves the arm
 
 **Target:** PHNN measurably better than RLS; reported against Oracle  
-**Measured:** slow-sweep deviation from the datasheet-actuator arm: learned 0.108, datasheet 0.190, RLS 1.678 mrad (mean of 3 units)  
+**Measured:** slow-sweep deviation from the datasheet-actuator arm: learned 0.108, datasheet 0.190, RLS 1.681 mrad (mean of 3 units)  
 **Verdict:** ✔ met
 
 Each unit is a KX-6 with hidden actuators and its committed models. The headline is how far the joints stray, during slow sweeps, from the same arm with datasheet actuators (the reference); task path errors and tap settling are shown for context.
 
 | Unit | Model | Sweep deviation, mrad | Figure of eight, mm | Pick and place, mm | Tap settling, s |
 |---|---|---|---|---|---|
-| kx6-s300 | reference (datasheet actuators) | 0.000 | 2.44 | 1.78 | 0.278 |
-| kx6-s300 | nominal | 0.170 | 2.49 | 1.82 | 0.293 |
-| kx6-s300 | fitted | 0.351 | 2.44 | 1.82 | 0.294 |
-| kx6-s300 | learned | 0.109 | 2.43 | 1.81 | 0.291 |
-| kx6-s301 | reference (datasheet actuators) | 0.000 | 1.95 | 2.05 | 0.274 |
-| kx6-s301 | nominal | 0.180 | 2.00 | 2.10 | 0.252 |
-| kx6-s301 | fitted | 2.447 | 2.00 | 2.11 | 0.253 |
-| kx6-s301 | learned | 0.104 | 2.00 | 2.08 | 0.268 |
-| kx6-s302 | reference (datasheet actuators) | 0.000 | 2.05 | 3.43 | 0.275 |
-| kx6-s302 | nominal | 0.221 | 2.14 | 3.42 | 0.289 |
-| kx6-s302 | fitted | 2.237 | 2.10 | 3.48 | 0.288 |
-| kx6-s302 | learned | 0.111 | 2.11 | 3.45 | 0.321 |
+| kx6-s300 | reference (datasheet actuators) | 0.000 | 2.52 | 1.90 | 0.279 |
+| kx6-s300 | nominal | 0.170 | 2.55 | 1.93 | 0.294 |
+| kx6-s300 | fitted | 0.353 | 2.51 | 1.93 | 0.294 |
+| kx6-s300 | learned | 0.109 | 2.50 | 1.92 | 0.291 |
+| kx6-s301 | reference (datasheet actuators) | 0.000 | 2.09 | 2.19 | 0.274 |
+| kx6-s301 | nominal | 0.180 | 2.13 | 2.22 | 0.252 |
+| kx6-s301 | fitted | 2.451 | 2.12 | 2.23 | 0.253 |
+| kx6-s301 | learned | 0.104 | 2.11 | 2.23 | 0.272 |
+| kx6-s302 | reference (datasheet actuators) | 0.000 | 2.13 | 3.21 | 0.275 |
+| kx6-s302 | nominal | 0.219 | 2.20 | 3.20 | 0.292 |
+| kx6-s302 | fitted | 2.240 | 2.17 | 3.27 | 0.290 |
+| kx6-s302 | learned | 0.111 | 2.17 | 3.23 | 0.325 |
 
 The H1 tap and H2 tasks barely change with any model: the stiff output-encoder servo already rejects most of what the actuators do differently. Where friction matters (slow motion), the learned feed-forward brings the arm closest to the reference; the online RLS fit chases what its structure cannot represent and can end worse than the datasheet.
 
@@ -288,10 +288,10 @@ Unit kx6-s300, every joint's learned model broken the same way:
 
 | Corruption | Sweep deviation, mrad | Figure of eight, mm | Tap settling | Rest motion after the tap, mm |
 |---|---|---|---|---|
-| friction x5 | 1.370 | 2.29 | 0.290 s | 0.012 |
-| cogging x-10 | 0.649 | 2.64 | 0.166 s | 0.013 |
-| noise on every weight | 0.231 | 2.43 | 0.291 s | 0.013 |
+| friction x5 | 1.370 | 2.38 | 0.290 s | 0.012 |
+| cogging x-10 | 0.625 | 2.71 | 0.165 s | 0.011 |
+| noise on every weight | 0.231 | 2.49 | 0.290 s | 0.013 |
 
 Never unstable, but not free: the feed-forward is in the loop through the measured motor angle, so cogging ten times too large and of the wrong sign acts like ten times the real cogging, and the tool chatters at rest. A wrong model degrades performance; the servo and the energy tank keep the arm bounded.
 
-<sub>Proof run took 78 min.</sub>
+<sub>Proof run took 17 min.</sub>

@@ -7,6 +7,11 @@ All notable changes, one entry per ticket. The format follows
 
 ### Fixed
 
+- **NX-25** Under a 15 Hz policy computer, network damping made the joints vibrate 4–10 %
+  more during tasks: it pulled each joint onto the kinks between goal segments. Damping
+  now subtracts the reference velocity smoothed at half the goal rate, which each joint
+  measures itself; network damping cuts task vibration 1–13 % and tracks better than no
+  damping. Classic-controller and tap numbers unchanged.
 - **NX-23** Damping braked commanded motion: during tasks the network-damped arm tracked
   worse than the undamped one (figure of eight 2.32 against 1.44 mm RMS), as the owner
   spotted in the demo. Both damping laws now act on rate minus the joint's own reference

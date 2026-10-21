@@ -108,6 +108,38 @@ const MIN_SEGMENT_SECONDS: f32 = 0.01;
 /// Time to coast to a stop when goals stop arriving, s.
 const COAST_SECONDS: f32 = 0.15;
 
+/// How often goals arrive: an average of the gaps between them, in bus cycles.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct GoalRate {
+    last: Option<u32>,
+    gap: Option<f32>,
+}
+
+impl GoalRate {
+    /// A gap longer than this is a pause between tasks, not the goal rate, cycles.
+    const PAUSE_CYCLES: u32 = 2_000;
+    /// Weight of the newest gap in the average.
+    const WEIGHT: f32 = 0.2;
+
+    /// A goal arrived at `cycle`.
+    pub fn arrived(&mut self, cycle: u32) {
+        if let Some(gap) =
+            self.last.map(|last| cycle.wrapping_sub(last)).filter(|g| (1..Self::PAUSE_CYCLES).contains(g))
+        {
+            #[allow(clippy::cast_precision_loss)] // gaps are below 2000 cycles
+            let gap = gap as f32;
+            self.gap = Some(self.gap.map_or(gap, |avg| avg + Self::WEIGHT * (gap - avg)));
+        }
+        self.last = Some(cycle);
+    }
+
+    /// Goals per second, once two have arrived close enough together.
+    #[must_use]
+    pub fn hz(&self, cycle_seconds: f32) -> Option<f32> {
+        self.gap.map(|gap| 1.0 / (gap * cycle_seconds))
+    }
+}
+
 /// Joint-level interpolation (B3): every goal becomes a quintic from the current reference
 /// to the goal's position and velocity at its due cycle. All joints share the bus clock,
 /// so goals stamped with the same cycle are reached together. When the next goal does not
@@ -243,10 +275,22 @@ impl Interpolator for SwitchableInterpolator {
 
 #[cfg(test)]
 mod tests {
-    use super::{Interpolator, Quintic, Reference, SplineInterpolator};
+    use super::{GoalRate, Interpolator, Quintic, Reference, SplineInterpolator};
     use nexus_proto::Goal;
 
     const DT: f32 = 0.00025;
+
+    #[test]
+    fn goal_rate_averages_gaps_and_ignores_pauses() {
+        let mut rate = GoalRate::default();
+        assert!(rate.hz(0.000_25).is_none());
+        for k in 0..20 {
+            rate.arrived(k * 267); // 15 Hz at 4 kHz
+        }
+        rate.arrived(20 * 267 + 40_000); // a pause between tasks
+        let hz = rate.hz(0.000_25).unwrap();
+        assert!((hz - 4000.0 / 267.0).abs() < 0.01, "{hz}");
+    }
 
     #[test]
     fn quintic_hits_both_end_states() {

@@ -13,8 +13,17 @@ impl LowPass {
     /// Corner `cutoff_hz` at timestep `dt`.
     #[must_use]
     pub fn new(cutoff_hz: f32, dt: f32) -> Self {
+        Self { alpha: Self::alpha(cutoff_hz, dt), value: None }
+    }
+
+    fn alpha(cutoff_hz: f32, dt: f32) -> f32 {
         let rc = 1.0 / (2.0 * PI * cutoff_hz);
-        Self { alpha: dt / (rc + dt), value: None }
+        dt / (rc + dt)
+    }
+
+    /// Moves the corner to `cutoff_hz`, keeping the filter's state.
+    pub fn set_cutoff(&mut self, cutoff_hz: f32, dt: f32) {
+        self.alpha = Self::alpha(cutoff_hz, dt);
     }
 
     /// Filters one sample.
@@ -45,6 +54,12 @@ impl LowPass2 {
     #[must_use]
     pub fn new(cutoff_hz: f32, dt: f32) -> Self {
         Self { first: LowPass::new(cutoff_hz, dt), second: LowPass::new(cutoff_hz, dt) }
+    }
+
+    /// Moves both corners to `cutoff_hz`, keeping the filter's state.
+    pub fn set_cutoff(&mut self, cutoff_hz: f32, dt: f32) {
+        self.first.set_cutoff(cutoff_hz, dt);
+        self.second.set_cutoff(cutoff_hz, dt);
     }
 
     /// Filters one sample.

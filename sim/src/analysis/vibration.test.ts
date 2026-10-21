@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { type Frame, FrameKind } from "../../sim/src/bus/protocol.ts";
-import type { Host } from "../../sim/src/host/host.ts";
-import { BUS_CYCLE_HZ } from "../../sim/src/index.ts";
+import { type Frame, FrameKind } from "../bus/protocol.ts";
+import type { Host } from "../host/host.ts";
+import { BUS_CYCLE_HZ } from "../index.ts";
 import { VibrationMeter } from "./vibration.ts";
 
 /** A host whose last received frames are one state frame per joint with `gyro`. */

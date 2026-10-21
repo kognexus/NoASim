@@ -22,7 +22,7 @@ import {
   TwinRig,
 } from "./rig.ts";
 import { STATUS_LABEL, STATUS_VAR } from "./status.ts";
-import { VibrationMeter } from "./vibration.ts";
+import { VibrationMeter } from "../../sim/src/analysis/vibration.ts";
 import { ArmView } from "./view.ts";
 
 const $ = <T extends HTMLElement>(selector: string, root: ParentNode = document): T => {

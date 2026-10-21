@@ -3,8 +3,8 @@
  * housing IMU measures, high-passed so commanded motion drops out, as an RMS over a
  * short window. This is the shaking each actuator itself feels.
  */
-import type { Host } from "../../sim/src/host/host.ts";
-import { BUS_CYCLE_HZ } from "../../sim/src/index.ts";
+import type { Host } from "../host/host.ts";
+import { BUS_CYCLE_HZ } from "../index.ts";
 
 /** Below this, rotation counts as commanded motion, not vibration, Hz. */
 const HIGHPASS_HZ = 3;
