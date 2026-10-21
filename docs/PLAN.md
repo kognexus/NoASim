@@ -281,10 +281,11 @@ you say so.
 | **NX-26** | Budget and premium actuator grades (added 21 Oct) | Grades of drawn imperfections, including phase-current offset and gain mismatch; per-grade proof; demo selector |
 | **NX-27** | Headroom for learned damping (added 21 Oct) | A full-state ideal controller as an upper bound against the joints' damping; whether RL is worth it |
 | **NX-28** | Coordinated damping between neighbours (added 21 Oct) | From a colleague's derivation: modes no joint can reach; the ceiling of a passive relative-velocity coupling; the coupling itself if worthwhile; fading stale neighbours; ADR-0004 in Laplacian terms |
+| **NX-29** | Coordinated damping from joints two places away (added 21 Oct) | A gain designed for two-joint reach, evaluated on true and on bus-estimated state, then in the node inside the tank; taps, tasks, bus faults, other postures |
 
 Order: NX-00 → 01 (the spike; it can change the plan) → 02 to 12 in order → 13 to 15 (PHNN)
 → 16 to 18 → 19 → 20 → 21. NX-20 can start once NX-11 lands, so the demo grows with the
-features. NX-22 to NX-28 were added after the owner's first review.
+features. NX-22 to NX-29 were added after the owner's first review.
 
 **Modelling choice (decided 20 Oct).** Stabilisation is port-Hamiltonian in structure. The
 joint's model of itself is learned (a PHNN), because the claim is that the unit doesn't need
