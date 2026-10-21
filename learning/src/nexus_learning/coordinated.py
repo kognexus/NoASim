@@ -334,8 +334,6 @@ def export(model: CoordinatedModel, info: list[JointInfo], reach: int) -> dict:
     }
 
 
-#: Postures of the neighbourhood datasets (``experiments/src/commission-neighbourhood.ts``).
-POSTURES = ("home", "reach", "mid")
 #: Reaches exported: 0 (the joint alone, the baseline) and 2 (two joints either side).
 REACHES = (0, 2)
 
@@ -353,10 +351,11 @@ def main() -> None:
     args = parser.parse_args()
     report: dict[str, dict] = {}
     for dataset in args.datasets:
-        arm = json.loads((dataset / "meta.json").read_text())["arm"]
+        meta = json.loads((dataset / "meta.json").read_text())
+        arm, postures = meta["arm"], meta["postures"]
         info = read_joints(dataset)
-        train = [load_arm_run(dataset, f"{p}-train") for p in POSTURES]
-        held = [load_arm_run(dataset, f"{p}-heldout", with_truth=True) for p in POSTURES]
+        train = [load_arm_run(dataset, f"{p}-train") for p in postures]
+        held = [load_arm_run(dataset, f"{p}-heldout", with_truth=True) for p in postures]
         for reach in REACHES:
             out = args.out / f"{arm}-reach{reach}"
             out.mkdir(parents=True, exist_ok=True)

@@ -60,6 +60,35 @@ See [RESULTS.md](RESULTS.md) (H10a–H10d). In short:
 - On the sealed family, opened once for the final run, it closes about 60 % of the gap
   against a 70 % target, and two of six joints end worse than the datasheet.
 
+## Coordinated models: what the neighbourhood adds (NX-31)
+
+The model above is of the actuator alone, commissioned while the other joints hold. What
+the gear carries, the arm beyond it, depends on how the neighbours move, so each joint
+also learns a **coordinated model** from neighbourhood commissioning: every joint runs
+its own excitation at once, on frequencies interleaved with the others' (with one band
+they all moved nearly in phase, and a joint took its neighbours' inertia for its own).
+Joint `i` learns, from its own frames and those of the joints up to two places away:
+
+- **Its row of the neighbourhood's inertia**, `τ_i = Σ_j m_ij(q) · q̈_j + g_i(q)`, where
+  `τ_i` is the torque its gear delivers (stiffness × twist). `m_ij` is linear in Fourier
+  features of the angles of the joints beyond the inner of `i` and `j` only, as in any
+  serial arm's mass matrix; fitted freely, it found dependence on the base joint that is
+  not there. On the stiff arm the learned rows match the simulator's mass matrix to a few
+  percent.
+- **Its link's compliance**, `b = c · τ`. No joint can measure its link's tilt (an
+  accelerometer bias of 0.02 g is 20 mrad), but the next joint's gyro sits at the link's
+  far end: the bend rate is that gyro minus the joint's own, on its axis, minus its own
+  speed. Integrated with the bias taken out, it gives `c` within 3 % of the true value.
+
+In the joint, both are feed-forward. It adds `I_rotor·q̈_i + Σ_j m_ij · q̈_ref,j` from the
+references its neighbours publish (each publishes the smoothed derivative of its reference
+velocity), predicts its link's bend from the torque it is about to deliver, publishes it,
+and shifts its angle by half of it and half of its inner neighbour's. Fitted by least
+squares on structured features rather than by gradient descent: one joint sees only its
+own row of the neighbourhood's equations, which does not determine the neighbourhood's
+energy function, and a linear fit is exact and quick. Trainer:
+`learning/src/nexus_learning/coordinated.py`; results in RESULTS.md ("Neighbourhood").
+
 ## What would make it better
 
 - Commission over a wider range of angle, so once-per-turn effects become learnable.

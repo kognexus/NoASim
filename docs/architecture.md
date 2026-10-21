@@ -47,6 +47,7 @@ node-side code cannot import the plant, the actuator models or the analysis code
 | Commissioning | `excitation.rs` | Seeded multisine excitation inside the joint's limits |
 | Control | `control.rs` | Output-encoder PD with gravity and friction feed-forward |
 | Damping | `damping.rs` | Joint-local, or network damping on neighbours' IMU rates with an energy tank |
+| Coordinated model | `coordinated_model.rs` | Learned row of the neighbourhood's inertia and the link's compliance (NX-31): inertial feed-forward from the neighbours' published references, and a sag shift shared with the outer neighbour |
 | Coordinated damping | `coordinated.rs` | While holding: a Kalman filter on the state frames of the joints up to two places away and a gain designed for the arm (loaded from the host), through the tank; network damping otherwise |
 | Report to source | `source.rs` | Self-test of the motor-side residual, felt reports, claims, correction, deadline |
 | Safety | `safety.rs` | Torque, position, speed and thermal limits, each announced as it acts |
