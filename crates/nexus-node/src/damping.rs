@@ -1,8 +1,10 @@
 //! Vibration damping on top of the position loop (B1a, B5).
 //!
-//! Damping acts on the *absolute* angular velocity about the joint axis, high-pass
-//! filtered so it only sees vibration, never commanded motion. What differs between
-//! modes is where that velocity is measured:
+//! Damping acts on the angular velocity about the joint axis *minus the joint's own
+//! reference velocity*, high-pass filtered: what the motion does that the plan did not
+//! ask for. (Damping the absolute rate, as first built, also braked commanded moves and
+//! kept pulling after they ended, so a damped arm tracked tasks worse than an undamped
+//! one; NX-22.) What differs between modes is where the velocity is measured:
 //!
 //! - `Local`: at the joint's own output, from its own IMU (housing rate) plus its output
 //!   encoder. The joint alone cannot see its link bending.
@@ -28,6 +30,9 @@ pub struct DampingContext<'a> {
     pub now: u32,
     /// Inertia beyond the joint about its axis, from the gravity chain, if known, kg·m².
     pub outboard_inertia: Option<f32>,
+    /// The joint's own reference output velocity this cycle, rad/s: the commanded part of
+    /// the measured rates, which damping must leave alone.
+    pub reference_velocity: f32,
 }
 
 /// Adds a damping torque.
@@ -120,8 +125,9 @@ impl LocalDamper {
 }
 
 impl Damper for LocalDamper {
-    fn torque(&mut self, mode: DampingMode, e: &Estimate, _context: &DampingContext) -> f32 {
-        let vibration = self.smoothing.update(self.filter.update(self.output_rate(e)));
+    fn torque(&mut self, mode: DampingMode, e: &Estimate, context: &DampingContext) -> f32 {
+        let unplanned = self.output_rate(e) - context.reference_velocity;
+        let vibration = self.smoothing.update(self.filter.update(unplanned));
         let on = mode != DampingMode::Off;
         if on && !self.active {
             self.filter.reset();
@@ -242,7 +248,9 @@ impl Damper for NetworkDamper {
             self.last_signal = 0.0;
             return local;
         };
-        let own = dot(e.gyro, self.axis);
+        // Relative to the own housing, the tip turns at this joint's rate plus the link's
+        // bending; the commanded part of that is exactly the joint's reference velocity.
+        let own = dot(e.gyro, self.axis) + context.reference_velocity;
         let (hp, lp) = &mut self.tip_filter;
         let tip = lp.update(hp.update(dot(outer.gyro, self.axis) - own));
         let (hp, lp) = &mut self.relay_filter;

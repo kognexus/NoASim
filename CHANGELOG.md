@@ -7,6 +7,12 @@ All notable changes, one entry per ticket. The format follows
 
 ### Fixed
 
+- **NX-23** Damping braked commanded motion: during tasks the network-damped arm tracked
+  worse than the undamped one (figure of eight 2.32 against 1.44 mm RMS), as the owner
+  spotted in the demo. Both damping laws now act on rate minus the joint's own reference
+  velocity; damped arms track as well as undamped ones, and tap settling at rest is
+  unchanged. The demo chart has a legend naming each arm's mode.
+
 - Duplicate-time policy steps at the end of a task made the arm lurch (NX-09/NX-10);
   the figure of eight now ramps out. H2 re-measured in the NX-10 ticket.
 

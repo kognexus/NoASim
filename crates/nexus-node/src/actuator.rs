@@ -238,6 +238,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             neighbours: &self.neighbours,
             now: cycle,
             outboard_inertia: self.gravity.outboard_inertia(),
+            reference_velocity: reference.velocity,
         };
         let cap = self.limits.network_torque_share * self.limits.max_torque;
         let damping = self.stages.damper.torque(self.settings.damping, &estimate, &context).clamp(-cap, cap);

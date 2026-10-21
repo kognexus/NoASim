@@ -45,8 +45,8 @@ is read only to score the Oracle baseline.
 - **Feed-forward:** the command that cancels friction and cogging, `(R·ω − cogging)/g`,
   evaluated at the measured motor angle.
 - **The self-test of report to source:** what the model leaves unexplained of the motor
-  balance. On actuators nobody described, the learned residual cut false claims from 6
-  in 30 trials to 1 (NX-15).
+  balance. On actuators nobody described, the learned residual cut false claims from 9
+  in 30 trials to 1 (NX-15, re-measured in NX-23).
 - **Not** for the damping law or its energy tank, which use measured power only. A wrong
   model can degrade performance but cannot inject energy through the damping term (H10d).
 
