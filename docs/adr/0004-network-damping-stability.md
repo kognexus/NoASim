@@ -106,8 +106,8 @@ with the joints' IMU low-pass, which the note lacks, so that no gear mode is inv
 | Law | Both arms, 0.25–0.5× | 1× (our tuned gain) | 8× |
 |---|---|---|---|
 | As written (both neighbours) | puts 20–121 mJ in per tap; settles no better than the joints alone | unstable, with or without delay | unstable |
-| Every term flipped (both neighbours) | puts 0–26 mJ in; settles worse than the joints alone | puts 40–75 mJ in | unstable |
-| Flipped, outer neighbour only | takes 40–100 mJ out; settles faster | takes 100–150 mJ out, never puts any in | puts energy in on both arms; light arm unstable with 4 cycles of delay |
+| Every term flipped (both neighbours) | puts 0–26 mJ in; settles worse than the joints alone | puts 40–76 mJ in | unstable |
+| Flipped, outer neighbour only | takes 40–100 mJ out; settles faster | takes 100–150 mJ out, never puts any in | puts energy in (light arm; stiff arm with 4 cycles of delay); light arm unstable with 4 cycles |
 
 As written, the outer term pushes each joint along its own speed (`+D(q̇_i + ḃ_i)`), and
 it destabilises the arm from our tuned gain on, with no delay at all. With the sign of a
