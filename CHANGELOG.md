@@ -5,6 +5,11 @@ All notable changes, one entry per ticket. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Duplicate-time policy steps at the end of a task made the arm lurch (NX-09/NX-10);
+  the figure of eight now ramps out. H2 re-measured in the NX-10 ticket.
+
 ### Added
 
 - **NX-11** Network damping on IMU-measured link-tip rates with a relayed second hop,

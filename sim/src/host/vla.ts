@@ -55,9 +55,9 @@ export class VlaEmulator {
     return this.#dropped;
   }
 
-  /** True once the task's last step has been emitted. */
+  /** True once the task's last step (the one that targets its end) has been emitted. */
   get finished(): boolean {
-    return this.#next * this.period > this.task.duration;
+    return this.#next > 0 && (this.#next - 1) * this.period >= this.task.duration - 1e-9;
   }
 
   /** The step that arrives at or before `time`, if any (at most one per call). */
@@ -70,6 +70,7 @@ export class VlaEmulator {
         this.#dropped++;
         continue;
       }
+      // Targets one step ahead, never past the end; the step that reaches the end is the last.
       const taskTime = Math.min(this.task.duration, (index + 1) * this.period);
       return { index, targetTime: this.#start + taskTime, target: this.task.pose(taskTime) };
     }

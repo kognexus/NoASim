@@ -51,8 +51,10 @@ export function figureEight(home: Pose, size = 0.15, period = 4, cycles = 2): Ta
     duration: period * cycles,
     pose(t) {
       const w = (2 * Math.PI * t) / period;
-      // Ramp the amplitude in over the first half period so the start is smooth.
-      const ramp = blend(t / (period / 2));
+      // Ramp the amplitude in over the first half period and out over the last, so the
+      // tool starts and ends at rest.
+      const end = period * cycles;
+      const ramp = Math.min(blend(t / (period / 2)), blend((end - t) / (period / 2)));
       return {
         position: offset(home.position, [
           0,

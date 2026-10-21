@@ -43,6 +43,9 @@ function goalFrame(
   };
 }
 
+/** Policy steps closer together than this are treated as duplicates, s. */
+const MIN_STEP_SECONDS = 1e-3;
+
 /** Shared IK bookkeeping: joint goals for successive policy steps. */
 class GoalTrack {
   readonly #spec: ArmSpec;
@@ -57,11 +60,14 @@ class GoalTrack {
     this.latest = { time: startTime, angles: start };
   }
 
-  add(step: VlaStep): void {
+  /** Adds a policy step; returns false (and ignores it) if it is not later than the last one. */
+  add(step: VlaStep): boolean {
+    if (step.targetTime <= this.latest.time + MIN_STEP_SECONDS) return false;
     const angles = solveIk(this.#spec, step.target, this.latest.angles);
     this.#load.ikSolves++;
     this.previous = this.latest;
     this.latest = { time: step.targetTime, angles };
+    return true;
   }
 }
 
@@ -129,8 +135,7 @@ export class JointLevelGoals implements MotionStrategy {
   }
 
   tick(cycle: number, step: VlaStep | undefined): Frame[] {
-    if (!step) return [];
-    this.#track.add(step);
+    if (!step || !this.#track.add(step)) return [];
     this.#sequence++;
     const { previous, latest } = this.#track;
     const span = Math.max(1e-6, latest.time - previous.time);
