@@ -283,10 +283,11 @@ you say so.
 | **NX-28** | Coordinated damping between neighbours (added 21 Oct) | From a colleague's derivation: modes no joint can reach; the ceiling of a passive relative-velocity coupling; the coupling itself if worthwhile; fading stale neighbours; ADR-0004 in Laplacian terms |
 | **NX-29** | Coordinated damping from joints two places away (added 21 Oct) | A gain designed for two-joint reach, evaluated on true and on bus-estimated state, then in the node inside the tank; taps, tasks, bus faults, other postures |
 | **NX-30** | Estimator-based coordinated damping (added 21 Oct) | Model checked against the simulation; delays and bias in the model; Kalman filter on raw encoder and gyro data; neighbourhood filters and the node if it holds up |
+| **NX-31** | Coordinated models, learned from the neighbourhood (added 21 Oct) | Oracle headroom of inertial coupling first; commissioning with every joint moving; each joint learns its row of the neighbourhood's dynamics; in the node if it holds up; settling, tracking and full-body stabilisation |
 
 Order: NX-00 → 01 (the spike; it can change the plan) → 02 to 12 in order → 13 to 15 (PHNN)
 → 16 to 18 → 19 → 20 → 21. NX-20 can start once NX-11 lands, so the demo grows with the
-features. NX-22 to NX-30 were added after the owner's first review.
+features. NX-22 to NX-31 were added after the owner's first review.
 
 **Modelling choice (decided 20 Oct).** Stabilisation is port-Hamiltonian in structure. The
 joint's model of itself is learned (a PHNN), because the claim is that the unit doesn't need
