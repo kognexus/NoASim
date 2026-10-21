@@ -6,21 +6,10 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { GeomInfo, Plant } from "../../sim/src/plant/plant.ts";
-import { type JointState, jointState } from "./status.ts";
+import { type JointState, jointState, STATUS_VAR } from "./status.ts";
 
 /** MuJoCo geom type codes (`mjtGeom`). */
 const GEOM = { plane: 0, sphere: 2, capsule: 3, cylinder: 5, box: 6 } as const;
-
-/** Disc colours by joint state (the CSS custom properties of the page match them). */
-const JOINT_COLOURS: Record<JointState, number> = {
-  ready: 0x3f8f6b,
-  idle: 0x8a8f98,
-  network: 0x2f6fd6,
-  holding: 0xd99a22,
-  fault: 0xd64545,
-  torqueOff: 0x222222,
-  commissioning: 0x8a5cd6,
-};
 
 function geomMesh(info: GeomInfo, material: THREE.Material): THREE.Object3D | undefined {
   const [a, b, c] = info.size;
@@ -55,6 +44,8 @@ export class ArmView {
   readonly #geoms: { index: number; object: THREE.Object3D }[] = [];
   readonly #discs: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshStandardMaterial>[] = [];
   readonly #canvas: HTMLCanvasElement;
+  /** Disc colour of each joint state, from the page's CSS (`STATUS_VAR`). */
+  readonly #statusColours: Record<JointState, THREE.Color>;
   #plant: Plant;
   #selected = -1;
   /** Called with the joint index (0-based) the user clicked, or −1. */
@@ -67,6 +58,13 @@ export class ArmView {
   constructor(canvas: HTMLCanvasElement, plant: Plant, shareWith?: ArmView) {
     this.#canvas = canvas;
     this.#plant = plant;
+    const css = getComputedStyle(canvas);
+    this.#statusColours = Object.fromEntries(
+      Object.entries(STATUS_VAR).map(([state, name]) => [
+        state,
+        new THREE.Color(css.getPropertyValue(name).trim() || "#8a8f98"),
+      ]),
+    ) as Record<JointState, THREE.Color>;
     this.#renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.#renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
     if (shareWith) {
@@ -127,7 +125,7 @@ export class ArmView {
     for (let j = 0; j < this.#plant.jointCount; j++) {
       const disc = new THREE.Mesh(
         new THREE.CylinderGeometry(0.05, 0.05, 0.07, 32),
-        new THREE.MeshStandardMaterial({ color: JOINT_COLOURS.idle, roughness: 0.4 }),
+        new THREE.MeshStandardMaterial({ color: this.#statusColours.idle, roughness: 0.4 }),
       );
       disc.userData["joint"] = j;
       this.#scene.add(disc);
@@ -167,7 +165,7 @@ export class ArmView {
       if (!disc) return;
       disc.position.set(...anchor.position);
       disc.quaternion.setFromUnitVectors(up, new THREE.Vector3(...anchor.axis));
-      disc.material.color.setHex(JOINT_COLOURS[jointState(status.get(j + 1))]);
+      disc.material.color.copy(this.#statusColours[jointState(status.get(j + 1))]);
       disc.material.emissive.setHex(j === this.#selected ? 0x555555 : 0x000000);
       disc.scale.setScalar(j === this.#selected ? 1.25 : 1);
     });

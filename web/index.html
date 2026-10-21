@@ -51,7 +51,7 @@
               <span
                 class="help"
                 tabindex="0"
-                data-tip="This arm's host and six joints on the line. Colour: what each joint reports (green ready, blue network damping, amber holding, red fault, black torque off). Halos: non-cyclic frames (blue), disturbance reports (amber), impacts and faults (red). Below: frames per second by kind, and the event log."
+                data-tip="This arm's host and six joints on the line. Colour: what each joint reports, as in the legend under the 3D views (grey ready, teal damping active, yellow holding, red fault, black torque off, violet commissioning). Halos: non-cyclic frames (grey), disturbance reports (yellow), impacts and faults (red). Below: frames per second by kind, and the event log."
                 >?</span
               >
             </h3>
@@ -85,8 +85,9 @@
       </section>
       <p class="hint">
         Drag to orbit, scroll to zoom, right-drag to pan: both views move together. Click a joint
-        disc to select it.
+        disc, or a joint in a bus view, to select it.
       </p>
+      <p class="status-legend" id="status-legend" aria-label="Joint colours"></p>
 
       <section class="compare">
         <div class="card">

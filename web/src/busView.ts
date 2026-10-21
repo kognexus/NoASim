@@ -6,7 +6,7 @@
 import { FaultCode, FrameKind } from "../../sim/src/bus/protocol.ts";
 import type { Host } from "../../sim/src/host/host.ts";
 import { BUS_CYCLE_HZ } from "../../sim/src/index.ts";
-import { type JointState, jointState } from "./status.ts";
+import { jointState, STATUS_VAR } from "./status.ts";
 
 const FAULT_NAMES: Record<number, string> = {
   [FaultCode.impact]: "impact",
@@ -122,19 +122,28 @@ export class BusMonitor {
   }
 }
 
-/** Status colours: the page's CSS custom properties. */
-const STATUS_VARS: Record<JointState, string> = {
-  idle: "--idle",
-  ready: "--ready",
-  network: "--network",
-  commissioning: "--network",
-  holding: "--holding",
-  fault: "--fault",
-  torqueOff: "--torque-off",
-};
+/** Horizontal position of bus node `i` (0 is the host) on a canvas `width` px wide. */
+const nodeX = (i: number, width: number, nodes: number) => 28 + (i * (width - 56)) / nodes;
 
-/** Draws the host and the line of nodes, with pulses for non-cyclic frames. */
-export function drawBus(canvas: HTMLCanvasElement, monitor: BusMonitor, nodes: number): void {
+/** The joint (0-based) whose node is at `clientX` on `canvas`, or −1 if none is near. */
+export function busJointAt(canvas: HTMLCanvasElement, clientX: number, nodes: number): number {
+  const x = clientX - canvas.getBoundingClientRect().left;
+  for (let i = 1; i <= nodes; i++) {
+    if (Math.abs(x - nodeX(i, canvas.clientWidth, nodes)) <= 16) return i - 1;
+  }
+  return -1;
+}
+
+/**
+ * Draws the host and the line of nodes, with pulses for non-cyclic frames and a ring on
+ * the selected joint (0-based, −1 for none).
+ */
+export function drawBus(
+  canvas: HTMLCanvasElement,
+  monitor: BusMonitor,
+  nodes: number,
+  selected = -1,
+): void {
   const ratio = Math.min(2, window.devicePixelRatio);
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
@@ -147,7 +156,7 @@ export function drawBus(canvas: HTMLCanvasElement, monitor: BusMonitor, nodes: n
   g.setTransform(ratio, 0, 0, ratio, 0, 0);
   g.clearRect(0, 0, w, h);
   const y = h / 2;
-  const x = (i: number) => 28 + (i * (w - 56)) / nodes; // i = 0 is the host
+  const x = (i: number) => nodeX(i, w, nodes);
   g.strokeStyle = colour("--grid");
   g.lineWidth = 2;
   g.beginPath();
@@ -162,7 +171,11 @@ export function drawBus(canvas: HTMLCanvasElement, monitor: BusMonitor, nodes: n
     if (kinds?.size) {
       const urgent = kinds.has(FrameKind.Impact) || kinds.has(FrameKind.Fault);
       g.fillStyle = colour(
-        urgent ? "--fault" : kinds.has(FrameKind.Disturbance) ? "--holding" : "--pulse",
+        urgent
+          ? "--status-fault"
+          : kinds.has(FrameKind.Disturbance)
+            ? "--status-holding"
+            : "--pulse",
       );
       g.globalAlpha = 0.35;
       g.beginPath();
@@ -170,10 +183,17 @@ export function drawBus(canvas: HTMLCanvasElement, monitor: BusMonitor, nodes: n
       g.fill();
       g.globalAlpha = 1;
     }
-    g.fillStyle = colour(i === 0 ? "--host" : STATUS_VARS[jointState(monitor.status.get(i))]);
+    g.fillStyle = colour(i === 0 ? "--host" : STATUS_VAR[jointState(monitor.status.get(i))]);
     g.beginPath();
     g.arc(x(i), y, 12, 0, 2 * Math.PI);
     g.fill();
+    if (i === selected + 1 && i > 0) {
+      g.strokeStyle = colour("--text");
+      g.lineWidth = 2;
+      g.beginPath();
+      g.arc(x(i), y, 16, 0, 2 * Math.PI);
+      g.stroke();
+    }
     g.fillStyle = colour("--muted");
     g.fillText(i === 0 ? "host" : `J${i}`, x(i), y + 28);
   }

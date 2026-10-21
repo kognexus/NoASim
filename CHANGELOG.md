@@ -12,6 +12,10 @@ All notable changes, one entry per ticket. The format follows
   spotted in the demo. Both damping laws now act on rate minus the joint's own reference
   velocity; damped arms track as well as undamped ones, and tap settling at rest is
   unchanged. The demo chart has a legend naming each arm's mode.
+- **NX-23** In the network modes a joint added joint-local damping on top of the network
+  term. With the tuned gains this did nothing in the proof, but the demo's "Network
+  damping" was network plus local. The network term now replaces local damping, which
+  remains the fallback for missing or stale neighbour data (B5). Proof numbers unchanged.
 
 - Duplicate-time policy steps at the end of a task made the arm lurch (NX-09/NX-10);
   the figure of eight now ramps out. H2 re-measured in the NX-10 ticket.

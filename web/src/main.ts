@@ -7,7 +7,7 @@ import nodeWasmUrl from "../../target/wasm32-unknown-unknown/release/nexus_wasm.
 import type { BusOptions } from "../../sim/src/bus/ethercatBus.ts";
 import type { PhnnDocument } from "../../sim/src/node/phnnModel.ts";
 import type { Vec3 } from "../../sim/src/plant/armSpec.ts";
-import { BusMonitor, drawBus, rateRows } from "./busView.ts";
+import { BusMonitor, busJointAt, drawBus, rateRows } from "./busView.ts";
 import { StripChart } from "./chart.ts";
 import {
   ArmRig,
@@ -21,6 +21,7 @@ import {
   type TaskName,
   TwinRig,
 } from "./rig.ts";
+import { STATUS_LABEL, STATUS_VAR } from "./status.ts";
 import { VibrationMeter } from "./vibration.ts";
 import { ArmView } from "./view.ts";
 
@@ -289,6 +290,30 @@ busSlider("drop", (v) => {
 
 window.addEventListener("resize", () => views.forEach((v) => v.resize()));
 
+// A joint can also be selected by clicking its node in either arm's bus view.
+for (const el of armEls) {
+  const canvas = $<HTMLCanvasElement>(".bus", el);
+  canvas.addEventListener("click", (e) => {
+    const joint = busJointAt(canvas, e.clientX, JOINT_COUNT);
+    if (joint >= 0) selectJoint(joint);
+  });
+  canvas.addEventListener("mousemove", (e) => {
+    canvas.style.cursor = busJointAt(canvas, e.clientX, JOINT_COUNT) >= 0 ? "pointer" : "";
+  });
+}
+
+// What the joint disc colours mean (the same colours as in the bus views).
+$("#status-legend").replaceChildren(
+  Object.assign(document.createElement("span"), { textContent: "Joint colours:" }),
+  ...STATUS_LABEL.map(([state, text]) => {
+    const item = document.createElement("span");
+    const dot = document.createElement("i");
+    dot.style.background = `var(${STATUS_VAR[state]})`;
+    item.append(dot, text);
+    return item;
+  }),
+);
+
 // Help tooltips open toward the side of the screen with room.
 for (const help of document.querySelectorAll<HTMLElement>(".help")) {
   const place = () =>
@@ -339,7 +364,7 @@ function frame(now: number): void {
     monitors.forEach((monitor, i) => {
       const el = armEls[i];
       if (!el) return;
-      drawBus($(".bus", el), monitor, JOINT_COUNT);
+      drawBus($(".bus", el), monitor, JOINT_COUNT, selected);
       if (now - rateWindow.shown > 500) showBusText(monitor, el);
     });
     if (now - rateWindow.shown > 500) {
