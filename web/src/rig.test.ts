@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import type { CoordinatedDocument } from "../../sim/src/analysis/estimator.ts";
 import { FaultCode } from "../../sim/src/bus/protocol.ts";
 import { loadMujoco, type Mujoco } from "../../sim/src/plant/mujoco.ts";
 import { loadNodeModule } from "../../sim/src/testing/fixtures.ts";
@@ -57,6 +58,44 @@ describe("the demo's twin arms (NX-20)", () => {
     ];
     // Joints 2 to 6 (the base joint only turns); each 9–13 % below none when measured.
     for (let j = 1; j < none.length; j++) expect(network[j]!).toBeLessThan(0.97 * none[j]!);
+  });
+
+  it("coordinated mode, from the committed design, holds a tap closer than network damping (NX-30)", async () => {
+    const doc = Object.values(
+      import.meta.glob<CoordinatedDocument>("../../models/coordinated-damping/kx6l.json", {
+        import: "default",
+        eager: true,
+      }),
+    )[0];
+    if (!doc) throw new Error("no committed design for the KX-6L");
+    const bus = { latencyCycles: 1 };
+    const [left, right] = await Promise.all(
+      [DampingMode.coordinated, DampingMode.network].map((damping) =>
+        ArmRig.create(
+          mujoco,
+          nodeModule,
+          DEFAULT_SHARED,
+          { damping, model: 0 },
+          undefined,
+          bus,
+          doc,
+        ),
+      ),
+    );
+    twin = new TwinRig(left!, right!);
+    twin.run(2 * BUS_CYCLE_HZ); // settle and calibrate while holding
+    const before = twin.arms.map((arm) => arm.system.plant.tcpPosition());
+    twin.both((arm) => arm.tap([0, 0, 1]));
+    const sum = [0, 0];
+    for (let k = 0; k < BUS_CYCLE_HZ; k += 40) {
+      twin.run(40);
+      twin.arms.forEach((arm, i) => {
+        const p = arm.system.plant.tcpPosition();
+        const q = before[i] ?? p;
+        sum[i]! += Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+      });
+    }
+    expect(sum[0]!).toBeLessThan(0.7 * sum[1]!);
   });
 
   it("builds the out-of-family test set from the sealed family and names it plainly", async () => {

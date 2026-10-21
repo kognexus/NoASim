@@ -4,13 +4,14 @@
  * them is what the user switched (damping mode, model, …).
  */
 import { DisturbedActuator } from "../../sim/src/actuators/disturbed.ts";
+import { blocksFromDocument, type CoordinatedDocument } from "../../sim/src/analysis/estimator.ts";
 import { cogging, type ActuatorEffect } from "../../sim/src/actuators/effects.ts";
 import type { DrawOptions } from "../../sim/src/actuators/families.ts";
 import { HiddenActuator } from "../../sim/src/actuators/hiddenActuator.ts";
 import type { BusOptions } from "../../sim/src/bus/ethercatBus.ts";
 import { DampingMode, ImpactPolicy } from "../../sim/src/bus/protocol.ts";
 import { ArmSystem } from "../../sim/src/harness/armSystem.ts";
-import type { ControlGains } from "../../sim/src/harness/gains.ts";
+import { type ControlGains, nodeConfigsFor } from "../../sim/src/harness/gains.ts";
 import { tunedGains } from "../../sim/src/harness/tuned.ts";
 import type { TaskOptions } from "../../sim/src/host/host.ts";
 import type { Task } from "../../sim/src/host/tasks.ts";
@@ -153,15 +154,29 @@ export class ArmRig {
     side: SideSettings,
     models: readonly PhnnDocument[] | undefined,
     bus: BusOptions,
+    coordinated?: CoordinatedDocument,
   ): Promise<ArmRig> {
     const spec = armSpec(shared);
     const hidden = shared.unit !== "datasheet";
+    const gains = demoGains(shared.arm);
+    // The coordinated design holds for the arm it was made for (NX-30); otherwise the
+    // joints have no model and coordinated mode is network damping.
+    const asDesigned =
+      coordinated?.arm === shared.arm &&
+      !hidden &&
+      shared.payload === coordinated.payload &&
+      shared.linkStiffness === 1;
+    const blocks =
+      asDesigned && coordinated
+        ? blocksFromDocument(coordinated, nodeConfigsFor(spec, BUS_CYCLE_HZ, gains))
+        : undefined;
     const system = await ArmSystem.create(mujoco, nodeModule, {
       spec,
       seed: hidden ? unitSeed(shared.unit) : 1,
-      gains: demoGains(shared.arm),
+      gains,
       bus,
       ...(hidden ? { actuators: actuatorDraw(shared.unit), ...(models ? { models } : {}) } : {}),
+      ...(blocks ? { coordinated: blocks } : {}),
     });
     system.run(2);
     system.host.applySettings({

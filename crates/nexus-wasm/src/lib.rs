@@ -20,8 +20,8 @@
 use core::cell::UnsafeCell;
 use core::mem::{offset_of, size_of};
 use nexus_node::{
-    default_actuator, DefaultActuator, Inbox, ModelError, MotorBalance, NodeConfig, Outbox, SensorFrame,
-    MODEL_WORDS,
+    default_actuator, CoordinatedError, DefaultActuator, Inbox, ModelError, MotorBalance, NodeConfig, Outbox,
+    SensorFrame, MODEL_WORDS,
 };
 
 /// Capacity of the inbox, bytes.
@@ -165,6 +165,37 @@ pub extern "C" fn nexus_load_model() -> u32 {
                 ModelError::WrongJoint => 2,
                 ModelError::TooManyOrders => 3,
                 ModelError::Invalid => 4,
+            }
+        }
+    }
+}
+
+/// Copies `io.model[..io.model_len]` into the coordinated-damping model being loaded,
+/// from word `offset` on (NX-30: the block is larger than the buffer, so it comes in
+/// chunks). Returns 0, or 1 if the node is not started.
+#[unsafe(no_mangle)]
+pub extern "C" fn nexus_load_coordinated_chunk(offset: u32) -> u32 {
+    let Instance { node, io } = instance();
+    let Some(node) = node.as_mut() else { return 1 };
+    let len = (io.model_len as usize).min(MODEL_WORDS);
+    node.load_coordinated_chunk(offset as usize, &io.model[..len]);
+    0
+}
+
+/// Takes the loaded block of `length` words as the coordinated-damping model. Returns 0
+/// on success, 1 if the node is not started, or 2 + the reason it was refused (too short,
+/// version, wrong joint, too large).
+#[unsafe(no_mangle)]
+pub extern "C" fn nexus_finish_coordinated(length: u32) -> u32 {
+    let Some(node) = instance().node.as_mut() else { return 1 };
+    match node.finish_coordinated(length as usize) {
+        Ok(()) => 0,
+        Err(reason) => {
+            2 + match reason {
+                CoordinatedError::TooShort => 0,
+                CoordinatedError::Version => 1,
+                CoordinatedError::WrongJoint => 2,
+                CoordinatedError::TooLarge => 3,
             }
         }
     }

@@ -61,6 +61,8 @@ export interface ArmSystemOptions {
    * settings' `model` byte selects it (2); without one a joint falls back to nominal.
    */
   readonly models?: readonly (PhnnDocument | undefined)[];
+  /** Coordinated-damping model blocks per joint (NX-30, `coordinatedBlocks`). */
+  readonly coordinated?: readonly (Float32Array | undefined)[];
 }
 
 /** Everything belonging to one joint. */
@@ -150,6 +152,8 @@ export class ArmSystem {
         node.init(config, index + 1);
         const model = options.models?.[index];
         if (model) node.loadModel(packPhnnModel(model));
+        const coordinated = options.coordinated?.[index];
+        if (coordinated) node.loadCoordinated(coordinated);
         const sensors = new JointSensors(
           joint.actuator,
           options.sensors ?? NEXUS_SENSORS,

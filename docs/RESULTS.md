@@ -29,6 +29,7 @@ reported as missed.
 | Headroom | Headroom for learned damping | Reported (NX-27): how much better any damping could do after a tap | KX-6L: ideal 2.9× lower mean distance than network; KX-6: ideal 3.7× lower mean distance than network | · reported |
 | Reach | Modes no joint can reach | Reported (NX-28): for each mode below 80 Hz, how much damping any one joint can add | reached by no joint: KX-6L home 55 Hz, KX-6L reach 67 Hz | · reported |
 | Coordinated | Coordinated damping from joints two places away | Reported (NX-29): a gain designed for each joint seeing the joints up to two places away, on the true state and on what the bus carries | KX-6L: 3.3× closer than network on the true state; KX-6: 4.7× closer than network on the true state; from the bus alone, not yet robust | · reported |
+| Estimator | Estimator-based coordinated damping | Reported (NX-30): a Kalman filter on the joints' frames and a designed gain, in the joints, against network damping | in the joints, after a tap, mean distance against network damping: clean bus KX-6L 1.3–1.8×, KX-6 2.0–2.8×; lossy bus KX-6L 1.0×, KX-6 1.0× | · reported |
 
 ## H1: Networked damping settles vibration faster
 
@@ -428,4 +429,29 @@ Linear-model cost at home, relative to no gain: KX-6L: full 0.070, neighbours 0.
 
 Designed for the structure (not cut from the full gain, as in NX-28), a gain that sees only the joints one or two places away matches the ideal controller on the true state, and holds up with three cycles of delay at the pose it was designed at. Run on the joints' state frames alone it is not yet robust: better than network damping at the home pose of the light arm, worse or oscillating elsewhere. The design treats the measurements as clean, delayed states; the joints' observers, the integration of the gyros and the position loops' actuation delay are not in its model. Not built into the node.
 
-<sub>Proof run took 32 min.</sub>
+## Estimator: Estimator-based coordinated damping
+
+**Target:** Reported (NX-30): a Kalman filter on the joints' frames and a designed gain, in the joints, against network damping  
+**Measured:** in the joints, after a tap, mean distance against network damping: clean bus KX-6L 1.3–1.8×, KX-6 2.0–2.8×; lossy bus KX-6L 1.0×, KX-6 1.0×  
+**Verdict:** · reported
+
+Taps as in NX-27 (two directions, unseen seeds) at three postures; the model and gains built once, at the home pose. Each cell: mean tool distance over the first second, time to stay within 0.5 mm. Lossy bus: 20 % of frames lost, 4 cycles of jitter. In coordinated mode each joint filters the state frames of the joints up to two places away while it holds still, and uses network damping while it moves or when that data is late.
+
+| Arm | Bus | Posture | network | estimator outside the joints, every frame | coordinated, in the joints |
+|---|---|---|---|---|---|
+| KX-6L | clean | home | 0.721 mm, 0.173 s | 0.393 mm, 0.103 s | 0.396 mm, 0.106 s |
+| KX-6L | clean | reach | 1.549 mm, 0.259 s | 0.921 mm, 0.205 s | 0.939 mm, 0.205 s |
+| KX-6L | clean | mid | 1.942 mm, 0.360 s | 1.410 mm, 0.330 s | 1.534 mm, 0.372 s |
+| KX-6L | lossy | home | 0.822 mm, 0.217 s | 0.467 mm, 0.110 s | 0.831 mm, 0.217 s |
+| KX-6L | lossy | reach | 1.830 mm, 0.351 s | 0.962 mm, 0.221 s | 1.847 mm, 0.350 s |
+| KX-6L | lossy | mid | 2.490 mm, 0.503 s | 1.435 mm, 0.331 s | 2.496 mm, 0.477 s |
+| KX-6 | clean | home | 0.667 mm, 0.190 s | 0.239 mm, 0.070 s | 0.240 mm, 0.070 s |
+| KX-6 | clean | reach | 1.314 mm, 0.259 s | 0.557 mm, 0.128 s | 0.579 mm, 0.157 s |
+| KX-6 | clean | mid | 1.539 mm, 0.263 s | 0.759 mm, 0.207 s | 0.783 mm, 0.204 s |
+| KX-6 | lossy | home | 0.743 mm, 0.215 s | 0.320 mm, 0.069 s | 0.763 mm, 0.215 s |
+| KX-6 | lossy | reach | 1.506 mm, 0.304 s | 0.615 mm, 0.127 s | 1.526 mm, 0.304 s |
+| KX-6 | lossy | mid | 1.800 mm, 0.409 s | 0.793 mm, 0.208 s | 1.826 mm, 0.407 s |
+
+The model is the arm linearised where it holds, with dry friction as damping of the fast part of the motor speed only, the joints' position loops and the damper's command (40 Hz low-pass) each a cycle late. On the lossy bus the joints are no better than network damping: a joint's filter needs the latest frame of every joint within its reach, no more than 4 cycles old, with the commands of its own cycle; with one frame in five lost and 4 cycles of jitter it often has not, and falls back to network damping. The same estimator outside the joints, on the frames as the host receives them, keeps its advantage there; what the joints lack is a way to carry on through missing frames.
+
+<sub>Proof run took 43 min.</sub>

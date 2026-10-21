@@ -15,7 +15,8 @@ async function committedModels(): Promise<PhnnDocument[]> {
   const documents: PhnnDocument[] = [];
   for (const unit of units.filter((u) => u.isDirectory())) {
     for (const file of await readdir(new URL(`${unit.name}/`, MODELS))) {
-      if (file.endsWith(".json")) {
+      // Learned joint models only (`models/coordinated-damping/` holds NX-30's designs).
+      if (/^joint\d+\.json$/.test(file)) {
         const text = await readFile(new URL(`${unit.name}/${file}`, MODELS), "utf8");
         documents.push(JSON.parse(text) as PhnnDocument);
       }

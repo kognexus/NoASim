@@ -37,11 +37,19 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-30** Coordinated damping in the joints (`Coordinated (while holding)` in the demo):
+  each joint runs a Kalman filter on the state frames of the joints up to two places
+  away and a gain designed on a model of the arm checked against the simulation. A tap
+  is held 1.3–1.8× closer than with network damping on the light arm and 2.0–2.8× on the
+  stiff one, on a clean bus, at postures not designed for; tasks unchanged. On a lossy
+  bus it falls back to network damping and is no better. The design is per arm and
+  payload; the demo uses it only for the arm it was made for.
 - **NX-29** Coordinated damping from joints up to two places away: a gain designed for
   that structure matches the ideal controller on the true state (3–5× closer than
   network damping after a tap), even for neighbours only. Run on the joints' bus data it
   is not yet robust (better at one pose, oscillating at others), so it is not in the
-  node; the measurement problems found and the next step are in the ticket.
+  node; the measurement problems found and the next step are in the ticket (done in
+  NX-30).
 - **NX-28** From a colleague's derivation: which modes no joint can reach (link bending at
   55–69 Hz on the light arm), the ceiling of a damper between neighbouring joints (a few
   percent: not built), and how far information reach goes (two joints either side gets

@@ -136,6 +136,8 @@ export const DampingMode = {
   local: 1,
   network: 2,
   networkWithSource: 3,
+  /** While holding: a filter on the joints up to two places away and a designed gain (NX-30). */
+  coordinated: 4,
 } as const;
 export type DampingMode = (typeof DampingMode)[keyof typeof DampingMode];
 

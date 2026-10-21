@@ -18,6 +18,8 @@ interface NexusExports {
   nexus_init(linePosition: number): void;
   nexus_tick(): void;
   nexus_load_model(): number;
+  nexus_load_coordinated_chunk(offset: number): number;
+  nexus_finish_coordinated(length: number): number;
   nexus_model_residual(
     angle: number,
     velocity: number,
@@ -147,6 +149,26 @@ export class WasmNode {
     if (status !== 0) {
       const reasons = ["not started", "too short", "version", "wrong joint", "orders", "invalid"];
       throw new Error(`node refused the model: ${reasons[status - 1] ?? status}`);
+    }
+  }
+
+  /**
+   * Loads the joint's coordinated-damping model (NX-30), a block of words larger than the
+   * model buffer, in chunks through it. Throws with the node's reason if it is refused.
+   */
+  loadCoordinated(words: Float32Array): void {
+    const layout = this.#layout;
+    const memory = this.#exports.memory.buffer;
+    for (let offset = 0; offset < words.length; offset += layout.modelCapacity) {
+      const chunk = words.subarray(offset, offset + layout.modelCapacity);
+      new Float32Array(memory, layout.model, chunk.length).set(chunk);
+      new DataView(memory).setUint32(layout.modelLen, chunk.length, true);
+      this.#exports.nexus_load_coordinated_chunk(offset);
+    }
+    const status = this.#exports.nexus_finish_coordinated(words.length);
+    if (status !== 0) {
+      const reasons = ["not started", "too short", "version", "wrong joint", "too large"];
+      throw new Error(`node refused the coordinated model: ${reasons[status - 1] ?? status}`);
     }
   }
 

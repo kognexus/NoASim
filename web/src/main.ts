@@ -4,6 +4,7 @@
  */
 import loadMujoco from "@mujoco/mujoco";
 import nodeWasmUrl from "../../target/wasm32-unknown-unknown/release/nexus_wasm.wasm?url";
+import type { CoordinatedDocument } from "../../sim/src/analysis/estimator.ts";
 import type { BusOptions } from "../../sim/src/bus/ethercatBus.ts";
 import type { PhnnDocument } from "../../sim/src/node/phnnModel.ts";
 import type { Vec3 } from "../../sim/src/plant/armSpec.ts";
@@ -36,6 +37,7 @@ const MODES: [string, DampingMode][] = [
   ["Joint-local damping", DampingMode.local],
   ["Network damping", DampingMode.network],
   ["Network + report to source", DampingMode.networkWithSource],
+  ["Coordinated (while holding)", DampingMode.coordinated],
 ];
 const MODELS: [string, number][] = [
   ["Datasheet model", 0],
@@ -43,6 +45,15 @@ const MODELS: [string, number][] = [
   ["Learned (PHNN)", 2],
 ];
 
+/** The committed coordinated-damping designs, by arm (NX-30). */
+const COORDINATED: Record<string, CoordinatedDocument> = Object.fromEntries(
+  Object.entries(
+    import.meta.glob<CoordinatedDocument>("../../models/coordinated-damping/*.json", {
+      import: "default",
+      eager: true,
+    }),
+  ).map(([path, doc]) => [path.split("/").pop()?.replace(".json", "") ?? "", doc]),
+);
 /** Committed per-joint models, by unit (`models/<unit>/joint<n>.json`), loaded on demand. */
 const MODEL_FILES = import.meta.glob<PhnnDocument>("../../models/*/joint*.json", {
   import: "default",
@@ -112,7 +123,9 @@ async function build(): Promise<void> {
   old?.dispose();
   const models = shared.unit === "datasheet" ? undefined : await unitModels(shared.unit);
   const [left, right] = await Promise.all(
-    sides.map((side) => ArmRig.create(mujoco, nodeModule, shared, side, models, bus)),
+    sides.map((side) =>
+      ArmRig.create(mujoco, nodeModule, shared, side, models, bus, COORDINATED[shared.arm]),
+    ),
   );
   if (!left || !right) throw new Error("arms not built");
   twin = new TwinRig(left, right);

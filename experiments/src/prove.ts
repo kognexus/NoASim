@@ -1,7 +1,7 @@
 /**
  * `npm run prove`: measures every hypothesis of the plan (H1–H10), the actuator grades
  * (NX-26), the headroom for learned damping (NX-27), the modes joints can reach (NX-28)
- * and coordinated damping (NX-29), from the code in this repository, and writes
+ * and coordinated damping (NX-29, NX-30), from the code in this repository, and writes
  * docs/RESULTS.md with SVG plots in docs/results/. Deterministic: every run uses fixed
  * seeds, and the learned models are the committed ones.
  *
@@ -23,6 +23,7 @@ import { grades } from "./prove/grades.ts";
 import { h9 } from "./prove/h9.ts";
 import { headroom } from "./prove/headroom.ts";
 import { coordination } from "./prove/coordination.ts";
+import { estimation } from "./prove/estimation.ts";
 import { reach } from "./prove/reach.ts";
 import { openLab } from "./runner.ts";
 
@@ -60,6 +61,7 @@ const STEPS: [string[], () => Promise<Finding | Finding[]>][] = [
   [["Headroom"], () => headroom(ctx)],
   [["Reach"], () => reach(ctx)],
   [["Coordinated"], () => coordination(ctx)],
+  [["Estimator"], () => estimation(ctx)],
 ];
 
 const ORDER = [
@@ -83,6 +85,7 @@ const ORDER = [
   "Headroom",
   "Reach",
   "Coordinated",
+  "Estimator",
 ];
 const findings: Finding[] = [];
 for (const [ids, step] of STEPS) {

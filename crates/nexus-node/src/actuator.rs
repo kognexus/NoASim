@@ -2,6 +2,7 @@
 
 use crate::config::NodeConfig;
 use crate::control::Controller;
+use crate::coordinated::{Coordinated, CoordinatedError, NearStates};
 use crate::damping::{Damper, DampingContext, MAX_NEIGHBOUR_AGE};
 use crate::dynamics::{DynamicsModel, MotorBalance};
 use crate::estimate::{Estimate, Estimator};
@@ -74,6 +75,8 @@ pub struct Actuator<E, I, C, D, S> {
     last_torque: f32,
     excitation: Option<Excitation>,
     goal_rate: GoalRate,
+    coordinated: Coordinated,
+    near: NearStates,
 }
 
 /// Outputs of a node besides its torque: the brake and the hardwired safe-torque-off line.
@@ -126,6 +129,8 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             last_torque: 0.0,
             excitation: None,
             goal_rate: GoalRate::default(),
+            coordinated: Coordinated::new(line_position, config.cycle_seconds()),
+            near: NearStates::default(),
         }
     }
 
@@ -244,17 +249,12 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             self.models.friction(estimate.motor_angle, reference.velocity) + gravity.holding_torque;
         let control = self.stages.controller.torque(&estimate, &reference, feedforward);
 
-        let context = DampingContext {
-            neighbours: &self.neighbours,
-            now: cycle,
-            outboard_inertia: self.gravity.outboard_inertia(),
-            reference_velocity: reference.velocity,
-            reference_bandwidth_hz: self.goal_rate.hz(self.config.cycle_seconds()).map(|hz| 0.5 * hz),
-        };
-        let cap = self.limits.network_torque_share * self.limits.max_torque;
-        let damping = self.stages.damper.torque(self.settings.damping, &estimate, &context).clamp(-cap, cap);
+        let damping = self.damping(&estimate, &reference, cycle);
         // Report to source (B1b): tell the others what we feel, claim what is ours, cancel it.
-        let network = matches!(self.settings.damping, DampingMode::Network | DampingMode::NetworkWithSource);
+        let network = matches!(
+            self.settings.damping,
+            DampingMode::Network | DampingMode::NetworkWithSource | DampingMode::Coordinated
+        );
         let correct = self.settings.damping == DampingMode::NetworkWithSource;
         let source = self.source.update(
             self.id,
@@ -291,7 +291,11 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
         self.last_torque = torque;
         self.last_damping = damping;
         if self.id != NodeId::UNASSIGNED {
-            outbox.push(&self.state_frame(cycle, &estimate, torque));
+            let frame = self.state_frame(cycle, &estimate, torque);
+            if let Frame::State(_, state) = &frame {
+                self.near.on_state(self.id, state, cycle);
+            }
+            outbox.push(&frame);
             if cycle % CHAIN_PERIOD == u32::from(self.line_position) % CHAIN_PERIOD {
                 let header = self.header(FrameKind::Chain, Destination::Neighbours, cycle);
                 outbox.push(&Frame::Chain(header, gravity.chain));
@@ -304,6 +308,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
         match frame {
             Frame::Assign(_, assign) if assign.position == self.line_position => {
                 self.id = assign.id;
+                self.near.on_announce(self.line_position, assign.id);
                 let header = self.header(FrameKind::Announce, Destination::All, cycle);
                 outbox.push(&Frame::Announce(header, self.config.announce(self.line_position)));
             }
@@ -345,9 +350,11 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             Frame::Ack(..) => self.supervisor.acknowledge(),
             Frame::Announce(header, announce) => {
                 self.neighbours.on_announce(self.line_position, header.source, announce);
+                self.near.on_announce(announce.position, header.source);
             }
             Frame::State(header, state) => {
                 self.neighbours.on_state(header.source, state, header.cycle, cycle);
+                self.near.on_state(header.source, state, header.cycle);
             }
             Frame::Chain(header, chain) => self.neighbours.on_chain(header.source, chain, header.cycle),
             Frame::Assign(..)
@@ -393,6 +400,44 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
         Ok(())
     }
 
+    /// The damping torque this cycle, within the host's share of the torque limit.
+    fn damping(&mut self, estimate: &Estimate, reference: &Reference, cycle: u32) -> f32 {
+        let context = DampingContext {
+            neighbours: &self.neighbours,
+            now: cycle,
+            outboard_inertia: self.gravity.outboard_inertia(),
+            reference_velocity: reference.velocity,
+            reference_bandwidth_hz: self.goal_rate.hz(self.config.cycle_seconds()).map(|hz| 0.5 * hz),
+        };
+        let cap = self.limits.network_torque_share * self.limits.max_torque;
+        let coordinated = self.settings.damping == DampingMode::Coordinated;
+        // In coordinated mode the network term runs too: it is what acts while the arm
+        // moves, calibrates, or a near joint's data is late (NX-30).
+        let mode = if coordinated { DampingMode::Network } else { self.settings.damping };
+        let network = self.stages.damper.torque(mode, estimate, &context);
+        coordinated
+            .then(|| {
+                self.coordinated.torque(&self.near, cycle, reference.velocity, estimate.output_velocity, cap)
+            })
+            .flatten()
+            .unwrap_or(network)
+            .clamp(-cap, cap)
+    }
+
+    /// Copies `words` into the coordinated-damping model being loaded, from `offset` on.
+    pub fn load_coordinated_chunk(&mut self, offset: usize, words: &[f32]) {
+        self.coordinated.load_chunk(offset, words);
+    }
+
+    /// Takes the loaded block of `length` words as the coordinated-damping model.
+    ///
+    /// # Errors
+    ///
+    /// When the block is not a model for this joint that the node can hold.
+    pub fn finish_coordinated(&mut self, length: usize) -> Result<(), CoordinatedError> {
+        self.coordinated.finish_load(length)
+    }
+
     /// What the loaded learned model leaves unexplained of `balance` at winding
     /// temperature `temperature`, or `None` without a model (diagnostics and tests).
     #[must_use]
@@ -428,8 +473,12 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             status |= StatusFlags::COMMISSIONING;
         }
         status |= self.directive.status | self.limit_status;
+        // Coordinated damping needs the joints up to two places away: then every joint
+        // hears every state frame, and each carries its coordinated command.
+        let coordinated = self.settings.damping == DampingMode::Coordinated;
+        let destination = if coordinated { Destination::All } else { Destination::Neighbours };
         Frame::State(
-            self.header(FrameKind::State, Destination::Neighbours, cycle),
+            self.header(FrameKind::State, destination, cycle),
             NodeState {
                 status: StatusFlags(status),
                 motor_angle: e.motor_angle,
@@ -441,7 +490,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
                 accel: e.accel,
                 current: e.current,
                 torque_command: torque,
-                network_torque: self.last_damping,
+                network_torque: if coordinated { self.coordinated.command() } else { self.last_damping },
                 temperature: e.temperature,
                 thermal_headroom: thermal_headroom(e.temperature, self.limits.max_temperature, AMBIENT),
                 tank_energy: self.stages.damper.tank_energy(),

@@ -6,17 +6,18 @@
  *
  * - the arm linearised where it holds, with the hinges' dry friction taken out of the
  *   linearisation (at rest it sticks, and MuJoCo's constraint then looks like an enormous
- *   damper) and put back as equivalent viscous damping on the motor speeds,
- *   `c_i = FRICTION_DAMPING · coulomb_i` (a describing function, fitted once on a tap);
+ *   damper) and put back as damping of the fast part of the motor speeds,
+ *   `c_i = FRICTION_DAMPING · coulomb_i` on `v − LP(v)` (fitted once on a tap);
  * - the joints' position loops acting one cycle late, as `ArmSystem` applies them;
  * - the damper's command through a second-order low-pass at `COMMAND_LOWPASS_HZ`, whose
  *   output acts one cycle late as it would inside a joint. Without it the gain found
  *   the rotor–gear modes at a few hundred hertz, where the model is least accurate, and
  *   drove them (at a posture between home and reach, J2 at 24 N·m RMS and 300 Hz).
  *
- * State `z = [x, u_loops, f₁, f₂]` (f: the command filter's two stages). Checked on the light arm: a vertical tap gives a
- * mean tool distance of 1.712 mm against the simulation's 1.746; a sideways one, not
- * fitted, 0.971 against 1.013.
+ * State `z = [x, u_loops, LP(v_motor), f₁, f₂]` (f: the command filter's two stages).
+ * Checked on the light arm, a vertical tap, mean tool distance over a second: 1.860 mm
+ * against the simulation's 1.746 at home, 4.669 against 4.327 at reach, 6.147 against
+ * 6.230 between them.
  *
  * **The measurements** are only what is raw in the joints' state frames: each joint's
  * motor encoder angle, its twist (output encoder minus motor), and its gyro (three axes),
@@ -31,8 +32,16 @@ import type { NodeConfig } from "../node/nodeConfig.ts";
 import { lqrGain, Matrix } from "../util/matrix.ts";
 import { designCost, linearise } from "./ideal.ts";
 
-/** Equivalent viscous damping of dry friction, per N·m of Coulomb friction, N·m·s/rad. */
-export const FRICTION_DAMPING = 10;
+/**
+ * Dry friction as damping of the fast part of the motor speed (above `FRICTION_CORNER_HZ`),
+ * per N·m of Coulomb friction, N·m·s/rad. The fast rotor–gear modes need it to be stable;
+ * the slow modes, where the joints slip during a tap, must not get it. (Damping the whole
+ * motor speed, `10·coulomb`, matched a tap at home but made the model unstable at another
+ * posture.)
+ */
+export const FRICTION_DAMPING = 100;
+/** Corner below which friction does not damp the motor speed in the model, Hz. */
+export const FRICTION_CORNER_HZ = 20;
 /** Corner of the low-pass on the damper's command, Hz: above the arm's modes, below the gears'. */
 export const COMMAND_LOWPASS_HZ = 40;
 /** Cycles between a joint's sensor sample and its use from the bus. */
@@ -44,7 +53,7 @@ const ANGLE_NOISE = 3.5e-5;
 const GYRO_NOISE = 4e-3;
 
 export interface LoopModel {
-  /** One bus cycle of `z = [x, u_loops, f₁, f₂]`. */
+  /** One bus cycle of `z = [x, u_loops, LP(v_motor), f₁, f₂]`. */
   readonly a: Matrix;
   /** The damper's command (it reaches the plant one cycle later). */
   readonly b: Matrix;
@@ -65,11 +74,14 @@ export function loopModel(system: ArmSystem, configs: readonly NodeConfig[]): Lo
   const nx = lin.a.rows;
   const nq = nx / 2;
   const m = configs.length;
-  const n = nx + 3 * m;
-  const f1 = nx + m;
-  const f2 = nx + 2 * m;
+  const n = nx + 4 * m;
+  const slow = nx + m; // low-pass of each motor speed, for the friction term
+  const f1 = nx + 2 * m;
+  const f2 = nx + 3 * m;
   const alpha = 1 - Math.exp(-2 * Math.PI * COMMAND_LOWPASS_HZ * plant.timestep);
-  // The joints' torque from the state, as their position loops compute it, plus friction.
+  const beta = 1 - Math.exp(-2 * Math.PI * FRICTION_CORNER_HZ * plant.timestep);
+  // The joints' torque from the state, as their position loops compute it, plus friction
+  // on the fast part of the motor speed: −c·(v − LP(v)).
   const loops = new Matrix(m, nx);
   configs.forEach((c, i) => {
     const { motor, gear } = plant.coordinates(i);
@@ -86,7 +98,14 @@ export function loopModel(system: ArmSystem, configs: readonly NodeConfig[]): Lo
       a.set(i, f2 + u, lin.b.get(i, u));
     }
   }
-  for (let u = 0; u < m; u++) for (let k = 0; k < nx; k++) a.set(nx + u, k, loops.get(u, k));
+  for (let u = 0; u < m; u++) {
+    for (let k = 0; k < nx; k++) a.set(nx + u, k, loops.get(u, k));
+    const motor = nq + plant.coordinates(u).motor;
+    a.set(nx + u, slow + u, FRICTION_DAMPING * (configs[u]?.coulombFriction ?? 0));
+    // LP(v) ← LP(v) + β (v − LP(v))
+    a.set(slow + u, slow + u, 1 - beta);
+    a.set(slow + u, motor, beta);
+  }
   const b = new Matrix(n, m);
   // The command filter: f₁ ← f₁ + α(command − f₁), f₂ ← f₂ + α(f₁ − f₂); f₂ acts.
   for (let u = 0; u < m; u++) {
@@ -294,7 +313,12 @@ export function attachLqg(
           : sent;
         now = step(now, guess);
       }
-      const u = times(lqg.gain, now).map((v) => -v);
+      // Limited before the low-pass (anti-windup), as in the joints.
+      const u = times(lqg.gain, now).map((v, j) => {
+        const cap = torqueShare * (configs[j]?.peakTorque ?? 0);
+        if (lqg.neighbourhoods && j !== f) return 0; // only this joint's own command is used
+        return Math.max(-cap, Math.min(cap, -v));
+      });
       if (lqg.neighbourhoods) command[f] = u[f] ?? 0;
       else command.set(u);
     });
@@ -315,4 +339,123 @@ export function attachLqg(
       return u;
     });
   };
+}
+
+/** Format of a coordinated-damping block (`coordinated.rs`). */
+export const BLOCK_FORMAT = 1;
+/** Cycles a joint averages its rest values over before acting. */
+export const CALIBRATION_CYCLES = 800;
+
+/**
+ * Packs, for each joint, what its node needs (`crates/nexus-node/src/coordinated.rs`):
+ * header [format, line position, states, joints, rows, delay, filter α, calibration
+ * cycles], then per measurement row (line position, channel), then A, B, the rows of C,
+ * the joint's own filter for those rows, and the whole gain K, each row by row.
+ */
+export function coordinatedBlocks(
+  model: LoopModel,
+  lqg: Lqg,
+  configs: readonly NodeConfig[],
+  reach: number,
+  cycleSeconds: number,
+): Float32Array[] {
+  const n = model.a.rows;
+  const m = configs.length;
+  const alpha = 1 - Math.exp(-2 * Math.PI * COMMAND_LOWPASS_HZ * cycleSeconds);
+  return configs.map((_, i) => {
+    const filter = lqg.neighbourhoods?.[i];
+    if (!filter) throw new Error("design the filters with a reach (designLqg(…, reach))");
+    const rows = Array.from({ length: m * MEASURED }, (_, r) => r).filter(
+      (r) => Math.abs(Math.floor(r / MEASURED) - i) <= reach,
+    );
+    const words: number[] = [
+      BLOCK_FORMAT,
+      i + 1,
+      n,
+      m,
+      rows.length,
+      MEASUREMENT_DELAY,
+      alpha,
+      CALIBRATION_CYCLES,
+    ];
+    for (const r of rows) words.push(Math.floor(r / MEASURED) + 1, r % MEASURED);
+    for (let a = 0; a < n; a++) for (let k = 0; k < n; k++) words.push(model.a.get(a, k));
+    for (let a = 0; a < n; a++) for (let u = 0; u < m; u++) words.push(model.b.get(a, u));
+    for (const r of rows) for (let k = 0; k < n; k++) words.push(model.c.get(r, k));
+    for (let a = 0; a < n; a++) for (const r of rows) words.push(filter.get(a, r));
+    for (let u = 0; u < m; u++) for (let k = 0; k < n; k++) words.push(lqg.gain.get(u, k));
+    return Float32Array.from(words);
+  });
+}
+
+/**
+ * A coordinated-damping design as committed for an arm (`models/coordinated-damping/<arm>.json`):
+ * the shared matrices once, each joint's own filter, row by row with 7 significant digits.
+ */
+export interface CoordinatedDocument {
+  readonly format: 1;
+  readonly arm: string;
+  /** The payload at the tool the design was made with, kg. */
+  readonly payload: number;
+  readonly reach: number;
+  readonly cycleSeconds: number;
+  readonly states: number;
+  readonly joints: number;
+  readonly a: number[];
+  readonly b: number[];
+  readonly c: number[];
+  readonly gain: number[];
+  /** Each joint's filter, states × measurement rows (all rows; zero outside its reach). */
+  readonly filters: number[][];
+}
+
+const digits = (m: Matrix) => Array.from(m.data, (v) => Number(v.toPrecision(7)));
+
+export function coordinatedDocument(
+  arm: string,
+  payload: number,
+  model: LoopModel,
+  lqg: Lqg,
+  reach: number,
+  cycleSeconds: number,
+): CoordinatedDocument {
+  if (!lqg.neighbourhoods) throw new Error("design the filters with a reach");
+  return {
+    format: 1,
+    arm,
+    payload,
+    reach,
+    cycleSeconds,
+    states: model.a.rows,
+    joints: model.b.cols,
+    a: digits(model.a),
+    b: digits(model.b),
+    c: digits(model.c),
+    gain: digits(lqg.gain),
+    filters: lqg.neighbourhoods.map(digits),
+  };
+}
+
+/** The per-joint blocks for the nodes, from a committed design. */
+export function blocksFromDocument(
+  doc: CoordinatedDocument,
+  configs: readonly NodeConfig[],
+): Float32Array[] {
+  const n = doc.states;
+  const m = doc.joints;
+  const p = m * MEASURED;
+  const model: LoopModel = {
+    a: new Matrix(n, n, Float64Array.from(doc.a)),
+    b: new Matrix(n, m, Float64Array.from(doc.b)),
+    force: new Matrix(n, 3),
+    c: new Matrix(p, n, Float64Array.from(doc.c)),
+    tool: new Matrix(3, 0),
+    nx: n - 4 * m,
+  };
+  const lqg: Lqg = {
+    gain: new Matrix(m, n, Float64Array.from(doc.gain)),
+    filter: new Matrix(n, p),
+    neighbourhoods: doc.filters.map((f) => new Matrix(n, p, Float64Array.from(f))),
+  };
+  return coordinatedBlocks(model, lqg, configs, doc.reach, doc.cycleSeconds);
 }

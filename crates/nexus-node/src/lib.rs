@@ -14,6 +14,7 @@
 mod actuator;
 mod config;
 mod control;
+mod coordinated;
 mod damping;
 mod dynamics;
 mod estimate;
@@ -35,6 +36,7 @@ pub mod vector;
 pub use actuator::{Actuator, SafetyOutputs, Stages};
 pub use config::NodeConfig;
 pub use control::{Controller, JointController};
+pub use coordinated::{Coordinated, CoordinatedError, NearStates, COORDINATED_FORMAT, COORDINATED_WORDS};
 pub use damping::{Damper, DampingContext, EnergyTank, LocalDamper, NetworkDamper, MAX_NEIGHBOUR_AGE};
 pub use dynamics::{DynamicsModel, MotorBalance, NominalModel, RlsModel};
 pub use estimate::{EncoderEstimator, Estimate, Estimator, TrackingObserver};

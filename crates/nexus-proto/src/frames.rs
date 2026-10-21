@@ -429,6 +429,9 @@ pub enum DampingMode {
     Network = 2,
     /// Network damping plus report-to-source and correction at the source.
     NetworkWithSource = 3,
+    /// While holding, damping from a filter on the joints up to two places away and a
+    /// gain designed for the arm (NX-30); network damping otherwise.
+    Coordinated = 4,
 }
 
 impl DampingMode {
@@ -437,6 +440,7 @@ impl DampingMode {
             1 => Self::Local,
             2 => Self::Network,
             3 => Self::NetworkWithSource,
+            4 => Self::Coordinated,
             _ => Self::Off,
         }
     }

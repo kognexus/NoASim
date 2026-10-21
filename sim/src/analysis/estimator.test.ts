@@ -8,7 +8,9 @@ import { KX6_HOME, KX6L, withInitialAngles } from "../plant/kx6.ts";
 import { loadMujoco, type Mujoco } from "../plant/mujoco.ts";
 import { tapTest } from "../scenarios/tap.ts";
 import { loadNodeModule } from "../testing/fixtures.ts";
-import { attachLqg, designLqg, type LoopModel, loopModel } from "./estimator.ts";
+import { figureEight } from "../host/tasks.ts";
+import { followTask, homePose } from "../scenarios/motion.ts";
+import { attachLqg, coordinatedBlocks, designLqg, type LoopModel, loopModel } from "./estimator.ts";
 
 describe("estimator-based coordinated damping (NX-30)", () => {
   let mujoco: Mujoco;
@@ -97,5 +99,56 @@ describe("estimator-based coordinated damping (NX-30)", () => {
     expect(coordinated.mean).toBeLessThan(0.7 * network.mean);
     // And it settles: no oscillation left at the end.
     expect(Math.max(...coordinated.tail)).toBeLessThan(0.1e-3);
+  });
+
+  it("in the joints: a tap held closer than network damping, a task tracked as with it", async () => {
+    const design = await held(31);
+    const model = loopModel(design, configs);
+    const lqg = designLqg(
+      model,
+      configs,
+      { torqueWeight: 3e-5, speedWeight: 1e-4, forceNoise: 20 },
+      2,
+    );
+    design.dispose();
+    const blocks = coordinatedBlocks(model, lqg, configs, 2, 1 / BUS_CYCLE_HZ);
+    const arm = async (coordinated: boolean) =>
+      ArmSystem.create(mujoco, nodeModule, {
+        spec,
+        gains: tunedGains("kx6l", "network"),
+        seed: 33,
+        ...(coordinated ? { coordinated: blocks } : {}),
+      });
+    const mode = (coordinated: boolean) =>
+      coordinated ? DampingMode.coordinated : DampingMode.network;
+    const tap = async (coordinated: boolean) => {
+      const system = await arm(coordinated);
+      try {
+        const r = tapTest(system, {
+          recordSeconds: 2,
+          beforeTap: (s) => s.host.applySettings({ damping: mode(coordinated) }),
+        });
+        return mean(r.deviation);
+      } finally {
+        system.dispose();
+      }
+    };
+    expect(await tap(true)).toBeLessThan(0.7 * (await tap(false)));
+    // Moving, the joints use network damping: the same tracking, within 10 µm (the
+    // coordinated damper acted while the arm held before the task, so it starts a hair
+    // apart).
+    const track = async (coordinated: boolean) => {
+      const system = await arm(coordinated);
+      try {
+        system.run(3);
+        system.host.applySettings({ damping: mode(coordinated) });
+        system.run(1);
+        return followTask(system, (s) => figureEight(homePose(s)), { mode: "joint-level" })
+          .pathErrorRms;
+      } finally {
+        system.dispose();
+      }
+    };
+    expect(Math.abs((await track(true)) - (await track(false)))).toBeLessThan(1e-5);
   });
 });
