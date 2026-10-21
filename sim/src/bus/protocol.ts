@@ -20,6 +20,7 @@ export const FrameKind = {
   Ack: 10,
   Fault: 11,
   Disturbance: 12,
+  Commission: 13,
 } as const;
 export type FrameKind = (typeof FrameKind)[keyof typeof FrameKind];
 
@@ -40,6 +41,7 @@ export const StatusFlags = {
   torqueOff: 1 << 5,
   derating: 1 << 6,
   thermalWarning: 1 << 7,
+  commissioning: 1 << 8,
 } as const;
 
 /** Which limit acted, in a `Limit` fault's value. */
@@ -113,6 +115,14 @@ export interface Disturbance {
   source: number;
   order: number;
   amplitude: number;
+}
+
+/** The host asking a node to run its commissioning excitation (B11). */
+export interface Commission {
+  /** How long the excitation runs, bus cycles. */
+  durationCycles: number;
+  /** Varies the excitation's phases between runs. */
+  seed: number;
 }
 
 export interface Assign {
@@ -200,7 +210,8 @@ export type Frame =
   | { header: Header & { kind: typeof FrameKind.Heartbeat }; heartbeat: true }
   | { header: Header & { kind: typeof FrameKind.Ack }; ack: { code: number } }
   | { header: Header & { kind: typeof FrameKind.Fault }; fault: Fault }
-  | { header: Header & { kind: typeof FrameKind.Disturbance }; disturbance: Disturbance };
+  | { header: Header & { kind: typeof FrameKind.Disturbance }; disturbance: Disturbance }
+  | { header: Header & { kind: typeof FrameKind.Commission }; commission: Commission };
 
 const PAYLOAD_LEN: Record<FrameKind, number> = {
   [FrameKind.State]: 4 + 20 * 4,
@@ -215,6 +226,7 @@ const PAYLOAD_LEN: Record<FrameKind, number> = {
   [FrameKind.Ack]: 4,
   [FrameKind.Fault]: 8,
   [FrameKind.Disturbance]: 12,
+  [FrameKind.Commission]: 8,
 };
 
 /** Encoded length of a frame of `kind`, header included. */
@@ -362,6 +374,9 @@ export function encodeFrame(frame: Frame): Uint8Array {
     w.u8(0);
     w.u16(0);
     w.f32(frame.disturbance.order, frame.disturbance.amplitude);
+  } else if ("commission" in frame) {
+    w.u32(frame.commission.durationCycles);
+    w.u32(frame.commission.seed);
   } else if ("chain" in frame) {
     const c = frame.chain;
     w.f32(
@@ -486,6 +501,10 @@ export function decodeFrame(bytes: Uint8Array): Frame {
       r.u16();
       const disturbance = { source: named, order: r.f32(), amplitude: r.f32() };
       return { header: { kind, source, destination, cycle }, disturbance };
+    }
+    case FrameKind.Commission: {
+      const commission = { durationCycles: r.u32(), seed: r.u32() };
+      return { header: { kind, source, destination, cycle }, commission };
     }
     case FrameKind.Fault: {
       const code = r.u8();

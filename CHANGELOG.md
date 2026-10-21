@@ -12,6 +12,11 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-13** Commissioning: on a `Commission` request a joint excites itself with a seeded
+  multisine (0.2–6 Hz) inside its position and speed limits while the others hold.
+  `experiments/src/commission.ts` writes per-joint train and held-out logs from what each
+  joint publishes, the node's own parameters, and a separate ground truth for the Oracle
+  and evaluation only.
 - **NX-12** Report to source. Each joint announces its fingerprint (excitation orders)
   and tests itself on its motor-side residual (produced minus commanded torque), which arm
   vibration cannot reach. Neighbours broadcast the vibration they feel at each order. A

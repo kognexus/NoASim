@@ -17,6 +17,7 @@ mod control;
 mod damping;
 mod dynamics;
 mod estimate;
+mod excitation;
 mod filters;
 mod gravity;
 mod impact;
@@ -36,6 +37,7 @@ pub use control::{Controller, JointController};
 pub use damping::{Damper, DampingContext, EnergyTank, LocalDamper, NetworkDamper, MAX_NEIGHBOUR_AGE};
 pub use dynamics::{DynamicsModel, NominalModel, RlsModel};
 pub use estimate::{EncoderEstimator, Estimate, Estimator, TrackingObserver};
+pub use excitation::Excitation;
 pub use filters::{HighPass, LowPass, LowPass2};
 pub use gravity::{
     ChainLoad, GravityCompensator, GravityOutput, GravitySource, LinkModel, PayloadEstimator, UpEstimator,

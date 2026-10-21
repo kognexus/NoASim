@@ -37,6 +37,8 @@ pub enum FrameKind {
     Fault = 11,
     /// A node naming the joint it believes causes a vibration it feels (B1b).
     Disturbance = 12,
+    /// The host asking a node to run its commissioning excitation (B11).
+    Commission = 13,
 }
 
 impl FrameKind {
@@ -54,6 +56,7 @@ impl FrameKind {
             10 => Self::Ack,
             11 => Self::Fault,
             12 => Self::Disturbance,
+            13 => Self::Commission,
             other => return Err(DecodeError::UnknownKind(other)),
         })
     }
@@ -74,6 +77,7 @@ impl FrameKind {
             Self::Ack => Ack::LEN,
             Self::Fault => Fault::LEN,
             Self::Disturbance => Disturbance::LEN,
+            Self::Commission => Commission::LEN,
         }
     }
 }
@@ -148,6 +152,8 @@ impl StatusFlags {
     pub const DERATING: u16 = 1 << 6;
     /// Thermal headroom is low; derating will follow if it keeps falling.
     pub const THERMAL_WARNING: u16 = 1 << 7;
+    /// The node is running its commissioning excitation.
+    pub const COMMISSIONING: u16 = 1 << 8;
 
     /// Returns `true` if every bit of `mask` is set.
     #[must_use]
@@ -629,6 +635,30 @@ impl Disturbance {
     }
 }
 
+/// The host asking a node to run its commissioning excitation (B11): the node moves
+/// itself, inside its limits, for `duration_cycles`, then holds where it started.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Commission {
+    /// How long the excitation runs, bus cycles.
+    pub duration_cycles: u32,
+    /// Varies the excitation's phases, so separate runs give independent data.
+    pub seed: u32,
+}
+
+impl Commission {
+    /// Payload length in bytes.
+    pub const LEN: usize = 8;
+
+    fn write(self, w: &mut Writer) {
+        w.u32(self.duration_cycles);
+        w.u32(self.seed);
+    }
+
+    fn read(r: &mut Reader) -> Result<Self, DecodeError> {
+        Ok(Self { duration_cycles: r.u32()?, seed: r.u32()? })
+    }
+}
+
 /// Gravity chain data (B10), sent to the neighbours about once per millisecond.
 ///
 /// Vectors are in the sender's housing frame, which is its inner neighbour's link frame.
@@ -714,6 +744,8 @@ pub enum Frame {
     Fault(Header, Fault),
     /// See [`Disturbance`].
     Disturbance(Header, Disturbance),
+    /// See [`Commission`].
+    Commission(Header, Commission),
 }
 
 impl Frame {
@@ -732,7 +764,8 @@ impl Frame {
             | Self::Heartbeat(h)
             | Self::Ack(h, _)
             | Self::Fault(h, _)
-            | Self::Disturbance(h, _) => h,
+            | Self::Disturbance(h, _)
+            | Self::Commission(h, _) => h,
         }
     }
 
@@ -773,6 +806,7 @@ impl Frame {
             Self::Ack(_, p) => p.write(&mut w),
             Self::Fault(_, p) => p.write(&mut w),
             Self::Disturbance(_, p) => p.write(&mut w),
+            Self::Commission(_, p) => p.write(&mut w),
         }
         w.len()
     }
@@ -804,6 +838,7 @@ impl Frame {
             FrameKind::Ack => Self::Ack(header, Ack::read(&mut r)?),
             FrameKind::Fault => Self::Fault(header, Fault::read(&mut r)?),
             FrameKind::Disturbance => Self::Disturbance(header, Disturbance::read(&mut r)?),
+            FrameKind::Commission => Self::Commission(header, Commission::read(&mut r)?),
         })
     }
 }

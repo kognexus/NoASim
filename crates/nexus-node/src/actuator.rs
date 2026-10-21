@@ -5,6 +5,7 @@ use crate::control::Controller;
 use crate::damping::{Damper, DampingContext, MAX_NEIGHBOUR_AGE};
 use crate::dynamics::DynamicsModel;
 use crate::estimate::{Estimate, Estimator};
+use crate::excitation::Excitation;
 use crate::gravity::{GravityCompensator, GravitySource};
 use crate::impact::{ImpactDetector, Watchdog};
 use crate::io::{Inbox, Outbox};
@@ -70,6 +71,7 @@ pub struct Actuator<E, I, C, D, S> {
     limited_reference: Option<f32>,
     source: SourceTracker,
     last_torque: f32,
+    excitation: Option<Excitation>,
 }
 
 /// Outputs of a node besides its torque: the brake and the hardwired safe-torque-off line.
@@ -120,6 +122,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             limited_reference: None,
             source: SourceTracker::new(&config),
             last_torque: 0.0,
+            excitation: None,
         }
     }
 
@@ -205,11 +208,15 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
                 );
             }
         }
-        let planned = self.stages.interpolator.reference(cycle);
+        let planned = self.planned(cycle);
         let host_silent =
             self.watchdog.expired(cycle, SupervisorTiming::new(self.config.cycle_seconds()).watchdog_cycles);
         let was_reacting = self.directive.reference.is_some();
         self.directive = self.supervisor.update(cycle, estimate.output_angle, &planned, host_silent);
+        if self.directive.reference.is_some() {
+            // A reaction (impact, comm loss) ends commissioning.
+            self.excitation = None;
+        }
         if was_reacting && self.directive.reference.is_none() {
             // Released (acknowledged): goals continue from where the joint is.
             self.stages.interpolator.hold(estimate.output_angle);
@@ -290,7 +297,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
                 self.limits = *limits;
                 self.has_limits = true;
             }
-            Frame::Goal(_, goal) if !self.directive.ignore_goals => {
+            Frame::Goal(_, goal) if !self.directive.ignore_goals && self.excitation.is_none() => {
                 self.stages.interpolator.add_goal(goal, cycle);
             }
             Frame::Settings(_, settings) => {
@@ -314,6 +321,11 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
                 );
             }
             Frame::Heartbeat(header) if header.source.is_host() => self.watchdog.feed(cycle),
+            Frame::Commission(_, request) if self.has_limits && self.directive.reference.is_none() => {
+                let dt = self.config.cycle_seconds();
+                self.excitation =
+                    Some(Excitation::new(self.last.output_angle, cycle, request, &self.limits, dt));
+            }
             Frame::Disturbance(header, report) => self.source.on_report(header.source, report, cycle),
             Frame::Ack(..) => self.supervisor.acknowledge(),
             Frame::Announce(header, announce) => {
@@ -327,7 +339,8 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             | Frame::Goal(..)
             | Frame::Impact(..)
             | Frame::Heartbeat(..)
-            | Frame::Fault(..) => {}
+            | Frame::Fault(..)
+            | Frame::Commission(..) => {}
         }
     }
 
@@ -355,6 +368,18 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             .map_or([0.0; 3], |state| rotate(state.gyro, self.config.axis, angle))
     }
 
+    /// The reference from the goals, or from the commissioning excitation (B11) while it
+    /// runs; afterwards the joint holds where the excitation began.
+    fn planned(&mut self, cycle: u32) -> Reference {
+        if let Some(reference) = self.excitation.and_then(|x| x.reference(cycle)) {
+            return reference;
+        }
+        if let Some(done) = self.excitation.take() {
+            self.stages.interpolator.hold(done.start_angle());
+        }
+        self.stages.interpolator.reference(cycle)
+    }
+
     const fn header(&self, kind: FrameKind, destination: Destination, cycle: u32) -> Header {
         Header { kind, source: self.id, destination, cycle }
     }
@@ -366,6 +391,9 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
         }
         if self.settings.damping != DampingMode::Off && self.last_damping != 0.0 {
             status |= StatusFlags::NETWORK_DAMPING;
+        }
+        if self.excitation.is_some() {
+            status |= StatusFlags::COMMISSIONING;
         }
         status |= self.directive.status | self.limit_status;
         Frame::State(

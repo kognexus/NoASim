@@ -6,8 +6,8 @@
 //! `cargo test -p nexus-proto --test golden -- --ignored --nocapture print_golden`
 
 use nexus_proto::{
-    Ack, Announce, Assign, Chain, DampingMode, Destination, Disturbance, Fault, FaultCode, Frame, FrameKind,
-    Goal, Header, Impact, Limits, NodeId, NodeState, Settings, StatusFlags,
+    Ack, Announce, Assign, Chain, Commission, DampingMode, Destination, Disturbance, Fault, FaultCode, Frame,
+    FrameKind, Goal, Header, Impact, Limits, NodeId, NodeState, Settings, StatusFlags,
 };
 
 fn header(kind: FrameKind, source: u8, destination: Destination) -> Header {
@@ -131,6 +131,13 @@ fn samples() -> Vec<(&'static str, Frame)> {
             Frame::Disturbance(
                 header(FrameKind::Disturbance, 2, Destination::All),
                 Disturbance { source: NodeId(3), order: 36.0, amplitude: 0.75 },
+            ),
+        ),
+        (
+            "commission",
+            Frame::Commission(
+                header(FrameKind::Commission, 0, Destination::Node(NodeId(3))),
+                Commission { duration_cycles: 48_000, seed: 0x0102_0304 },
             ),
         ),
         (

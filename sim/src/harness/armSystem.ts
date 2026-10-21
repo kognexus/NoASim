@@ -21,7 +21,7 @@ import { BUS_CYCLE_HZ } from "../index.ts";
 import type { NodeConfig } from "../node/nodeConfig.ts";
 import { WasmNode } from "../node/wasmNode.ts";
 import type { ArmSpec } from "../plant/armSpec.ts";
-import { type ActuatorPhysics, IdealDrive } from "../plant/drive.ts";
+import { type ActuatorOutput, type ActuatorPhysics, IdealDrive } from "../plant/drive.ts";
 import { KX6 } from "../plant/kx6.ts";
 import type { ObstacleSpec } from "../plant/mjcf.ts";
 import type { Mujoco } from "../plant/mujoco.ts";
@@ -72,6 +72,8 @@ export interface JointRuntime {
   readonly pending: number[];
   /** The node asked for its brake. */
   brake: boolean;
+  /** What the actuator physics did in the last cycle (ground truth, never given to a node). */
+  actuatorOutput: ActuatorOutput;
 }
 
 export class ArmSystem {
@@ -153,6 +155,7 @@ export class ArmSystem {
           commandTorque: 0,
           pending: new Array<number>(delay).fill(0),
           brake: false,
+          actuatorOutput: { driveTorque: 0, frictionTorque: 0, gearTorque: 0, current: 0 },
         };
       }),
     );
@@ -203,6 +206,7 @@ export class ArmSystem {
       const command = this.safeTorqueOff ? 0 : j.commandTorque;
       const out = j.physics.update(command, plant.actuatorState(j.index), dt);
       j.current = out.current;
+      j.actuatorOutput = out;
       plant.setMotorTorque(j.index, this.safeTorqueOff ? 0 : out.driveTorque);
       plant.setActuatorForces(j.index, out.frictionTorque, out.gearTorque);
       if (actuator?.brake) plant.setBrake(j.index, j.brake);

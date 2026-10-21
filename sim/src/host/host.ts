@@ -214,6 +214,17 @@ export class Host {
     this.#jointMotion = undefined;
   }
 
+  /**
+   * Asks node `address` to run its commissioning excitation for `seconds` (B11). `seed`
+   * varies the excitation, so separate runs give independent data.
+   */
+  commission(address: number, seconds: number, seed: number): void {
+    this.#queue.push({
+      header: { kind: FrameKind.Commission, source: Address.host, destination: address, cycle: 0 },
+      commission: { durationCycles: Math.round(seconds * BUS_CYCLE_HZ), seed },
+    });
+  }
+
   /** One host cycle: reads delivered records, returns records to send. */
   tick(cycle: number, inbox: Uint8Array): Uint8Array {
     this.lastReceived = decodeRecords(inbox).map(decodeFrame);

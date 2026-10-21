@@ -41,11 +41,11 @@ export async function openLab(): Promise<Lab> {
 export async function withArm<T>(
   lab: Lab,
   options: ArmSystemOptions,
-  run: (system: ArmSystem) => T,
+  run: (system: ArmSystem) => T | Promise<T>,
 ): Promise<T> {
   const system = await ArmSystem.create(lab.mujoco, lab.nodeModule, options);
   try {
-    return run(system);
+    return await run(system);
   } finally {
     system.dispose();
   }

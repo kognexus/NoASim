@@ -90,6 +90,10 @@ const SAMPLES: Record<string, Frame> = {
     header: header(FrameKind.Disturbance, 2, 0xff),
     disturbance: { source: 3, order: 36, amplitude: 0.75 },
   },
+  commission: {
+    header: header(FrameKind.Commission, 0, 3),
+    commission: { durationCycles: 48_000, seed: 0x01020304 },
+  },
   chain: {
     header: header(FrameKind.Chain, 2, 0xfe),
     chain: {
