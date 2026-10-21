@@ -105,7 +105,11 @@ async function build(): Promise<void> {
   const busy = $("#busy");
   busy.hidden = false;
   await new Promise((resolve) => requestAnimationFrame(resolve));
-  twin?.dispose();
+  // Nothing may step the old arms while the new ones load: the frame loop skips while
+  // `twin` is unset, and stepping a disposed arm would throw.
+  const old = twin;
+  twin = undefined;
+  old?.dispose();
   const models = shared.unit === "datasheet" ? undefined : await unitModels(shared.unit);
   const [left, right] = await Promise.all(
     sides.map((side) => ArmRig.create(mujoco, nodeModule, shared, side, models, bus)),
@@ -374,6 +378,8 @@ let last = performance.now();
 let rateWindow = { real: 0, sim: 0, shown: performance.now() };
 
 function frame(now: number): void {
+  // Scheduled first, so one failing frame cannot stop the loop.
+  requestAnimationFrame(frame);
   const elapsed = Math.min(0.1, (now - last) / 1000);
   last = now;
   if (twin) {
@@ -418,7 +424,6 @@ function frame(now: number): void {
       rateWindow = { real: 0, sim: 0, shown: now };
     }
   }
-  requestAnimationFrame(frame);
 }
 
 /** The frame rates and event log under arm `el`. */
