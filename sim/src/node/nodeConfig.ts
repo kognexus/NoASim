@@ -34,6 +34,7 @@ export interface NodeConfig {
   dampingHighpassHz: number;
   dampingLowpassHz: number;
   imuLowpassHz: number;
+  impactThreshold: number;
   modelVersion: number;
 }
 
@@ -66,6 +67,7 @@ export function packNodeConfig(c: NodeConfig): number[] {
     c.dampingHighpassHz,
     c.dampingLowpassHz,
     c.imuLowpassHz,
+    c.impactThreshold,
     c.modelVersion,
   ];
 }

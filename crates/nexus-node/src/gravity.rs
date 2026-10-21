@@ -206,6 +206,8 @@ impl PayloadEstimator {
 /// used (the load beyond a joint changes slowly, and holding with the last known load is far
 /// better than holding with none); it is only reported as stale.
 pub const MAX_CHAIN_AGE: u32 = 40;
+/// Oldest outer-neighbour IMU data used for the dynamic chain, bus cycles.
+const MAX_DYNAMIC_AGE: u32 = 8;
 /// Correction time constant of the up estimator, s.
 const UP_FILTER_SECONDS: f32 = 0.02;
 /// Gravity changes slowly; the feed-forward is smoothed so chain updates (every few cycles)
@@ -217,6 +219,10 @@ const FEEDFORWARD_FILTER_HZ: f32 = 15.0;
 pub struct GravityOutput {
     /// Torque to add as feed-forward, N·m (0 when the source is off).
     pub holding_torque: f32,
+    /// Torque the joint should be transmitting for the motion the IMUs measure (gravity and
+    /// inertia of everything beyond it), N·m. The torque the gear actually transmits minus
+    /// this is the external torque: contact (B2).
+    pub dynamic_torque: f32,
     /// What to tell the neighbours.
     pub chain: Chain,
 }
@@ -263,6 +269,7 @@ impl GravityCompensator {
         source: GravitySource,
         e: &Estimate,
         neighbours: &Neighbourhood,
+        now: u32,
     ) -> GravityOutput {
         let angle = e.output_angle;
         let imu_up = self.up.update(e.gyro, e.accel);
@@ -303,7 +310,25 @@ impl GravityCompensator {
         self.payload.update(-e.gear_torque, hold - payload_mass.max(0.0) * lever, lever, e.output_velocity);
 
         let smoothed = self.smoothing.update(hold);
+
+        // The same chain with measured motion: each link's mass times the specific force at
+        // its centre (mean of the IMUs at its two ends), summed from the tip inward.
+        let near = self.link.to_link(e.accel, angle);
+        let outer_state = neighbours.get(Side::Outer).and_then(|n| n.fresh_state(now, MAX_DYNAMIC_AGE));
+        let centre = outer_state.map_or(near, |state| scale(add(near, state.accel), 0.5));
+        let own_force = scale(centre, self.link.mass);
+        let own_moment = cross(scale(self.link.link, 0.5), own_force);
+        let (outer_force, outer_moment) = match outer {
+            Some(c) => (c.dynamic_force, c.dynamic_moment),
+            // The tip: the payload sits at the flange and moves (about) like the link's near end.
+            None => (scale(near, payload_mass.max(0.0)), [0.0; 3]),
+        };
+        let force = add(own_force, outer_force);
+        let moment = add(add(own_moment, outer_moment), cross(self.link.link, outer_force));
+        let dynamic = dot(self.link.axis, moment);
+
         GravityOutput {
+            dynamic_torque: dynamic,
             holding_torque: if source == GravitySource::Off { 0.0 } else { smoothed },
             chain: Chain {
                 up_link: self.link.to_link(level_up, angle),
@@ -313,6 +338,8 @@ impl GravityCompensator {
                 payload_mass,
                 payload_lever,
                 holding_torque: hold,
+                dynamic_force: self.link.to_housing(force, angle),
+                dynamic_moment: self.link.to_housing(moment, angle),
             },
         }
     }

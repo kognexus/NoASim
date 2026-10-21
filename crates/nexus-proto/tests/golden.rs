@@ -104,6 +104,8 @@ fn samples() -> Vec<(&'static str, Frame)> {
                     payload_mass: 2.875,
                     payload_lever: -4.5,
                     holding_torque: -31.25,
+                    dynamic_force: [1.5, -2.25, 70.5],
+                    dynamic_moment: [-0.5, 30.75, 0.125],
                 },
             ),
         ),

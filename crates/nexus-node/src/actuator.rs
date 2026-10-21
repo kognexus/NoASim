@@ -60,6 +60,7 @@ pub struct Actuator<E, I, C, D, S> {
     watchdog: Watchdog,
     directive: Directive,
     last_hold: f32,
+    last_effort: f32,
 }
 
 /// Outputs of a node besides its torque: the brake and the hardwired safe-torque-off line.
@@ -97,7 +98,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             last: Estimate::default(),
             last_damping: 0.0,
             neighbours: Neighbourhood::default(),
-            impact: ImpactDetector::new(config.cycle_seconds()),
+            impact: ImpactDetector::new(config.cycle_seconds(), config.impact_threshold),
             supervisor: Supervisor::new(
                 SupervisorTiming::new(config.cycle_seconds()),
                 config.has_brake > 0.5,
@@ -105,6 +106,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             watchdog: Watchdog::default(),
             directive: Directive::default(),
             last_hold: 0.0,
+            last_effort: 0.0,
         }
     }
 
@@ -169,11 +171,13 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
             self.handle(&frame, cycle, outbox);
         }
         self.models.observe(&estimate);
-        let gravity = self.gravity.update(self.gravity_source, &estimate, &self.neighbours);
+        let gravity = self.gravity.update(self.gravity_source, &estimate, &self.neighbours, cycle);
         self.last_hold = gravity.chain.holding_torque;
+        // External torque: what the gear transmits minus what the measured motion needs.
+        self.last_effort = -estimate.gear_torque - gravity.dynamic_torque;
 
         // Impact (B2): report our own detection to everyone and to our own supervisor.
-        if let Some(impact) = self.impact.update(&estimate) {
+        if let Some(impact) = self.impact.update(&estimate, self.last_effort) {
             if self.settings.impact_confirm > 0
                 && !self.supervisor.reacting()
                 && self.id != NodeId::UNASSIGNED
@@ -206,6 +210,7 @@ impl<E: Estimator, I: Interpolator, C: Controller, D: Damper, S: SafetySuperviso
         let feedforward =
             self.models.friction(reference.position, reference.velocity) + gravity.holding_torque;
         let control = self.stages.controller.torque(&estimate, &reference, feedforward);
+
         let context = DampingContext {
             neighbours: &self.neighbours,
             now: cycle,

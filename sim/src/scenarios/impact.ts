@@ -48,6 +48,12 @@ export interface ImpactResult {
   readonly reactionCycles: (number | undefined)[];
   /** Largest force on the block after detection, N. */
   readonly peakForceAfterDetection: number;
+  /** Mean force on the block over the half second after detection, N. */
+  readonly meanForceAfterDetection: number;
+  /** Bus cycle the arm first touched the block (force above 1 N). */
+  readonly contactCycle: number | undefined;
+  /** Force on the block at the end of the run, N. */
+  readonly finalForce: number;
   /** Tool position at the snapshot the joints retreat to, m. */
   readonly snapshotTool: Vec3 | undefined;
   /** Tool position at the end of the run, m. */
@@ -70,14 +76,24 @@ export function impactRun(
   const reaction: (number | undefined)[] = system.joints.map(() => undefined);
   const holding: (number | undefined)[] = system.joints.map(() => undefined);
   let detection: number | undefined;
+  let contact: number | undefined;
   let peak = 0;
+  let forceSum = 0;
+  let forceSamples = 0;
   for (let k = 0; k < Math.round((options.seconds ?? 3) * BUS_CYCLE_HZ); k++) {
     tool.push(system.plant.tcpPosition());
     system.step();
     if (detection === undefined && system.host.impacts.length > 0)
       detection = system.host.impacts[0]?.cycle;
-    if (detection !== undefined && system.cycle > detection)
-      peak = Math.max(peak, system.plant.obstacleForce());
+    const force = system.plant.obstacleForce();
+    if (contact === undefined && force > 1) contact = system.cycle;
+    if (detection !== undefined && system.cycle > detection) {
+      peak = Math.max(peak, force);
+      if (system.cycle <= detection + 0.5 * BUS_CYCLE_HZ) {
+        forceSum += force;
+        forceSamples++;
+      }
+    }
     for (const f of system.host.lastReceived) {
       if (!("state" in f)) continue;
       const i = f.header.source - 1;
@@ -100,6 +116,9 @@ export function impactRun(
     detectionCycle: detection,
     reactionCycles: reaction,
     peakForceAfterDetection: peak,
+    meanForceAfterDetection: forceSamples > 0 ? forceSum / forceSamples : 0,
+    contactCycle: contact,
+    finalForce: system.plant.obstacleForce(),
     snapshotTool: snapshotCycle === undefined ? undefined : tool[snapshotCycle - start],
     finalTool: system.plant.tcpPosition(),
     holdingCycles: holding,

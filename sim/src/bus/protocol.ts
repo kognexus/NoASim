@@ -164,6 +164,10 @@ export interface Chain {
   payloadMass: number;
   payloadLever: number;
   holdingTorque: number;
+  /** Σ m·f over the sender's link and beyond, N. */
+  dynamicForce: Vec3f;
+  /** Moment of those m·f about the sender's joint, N·m. */
+  dynamicMoment: Vec3f;
 }
 
 export type Frame =
@@ -186,7 +190,7 @@ const PAYLOAD_LEN: Record<FrameKind, number> = {
   [FrameKind.Announce]: 4 + 10 * 4,
   [FrameKind.Assign]: 4,
   [FrameKind.Settings]: 8,
-  [FrameKind.Chain]: 13 * 4,
+  [FrameKind.Chain]: 19 * 4,
   [FrameKind.Impact]: 8,
   [FrameKind.Heartbeat]: 0,
   [FrameKind.Ack]: 4,
@@ -336,6 +340,7 @@ export function encodeFrame(frame: Frame): Uint8Array {
       c.payloadLever,
       c.holdingTorque,
     );
+    w.f32(...c.dynamicForce, ...c.dynamicMoment);
   } else {
     w.u8(frame.assign.position);
     w.u8(frame.assign.id);
@@ -428,6 +433,8 @@ export function decodeFrame(bytes: Uint8Array): Frame {
         payloadMass: r.f32(),
         payloadLever: r.f32(),
         holdingTorque: r.f32(),
+        dynamicForce: r.vec3(),
+        dynamicMoment: r.vec3(),
       };
       return { header: { kind, source, destination, cycle }, chain };
     }

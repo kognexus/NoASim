@@ -605,11 +605,16 @@ pub struct Chain {
     pub payload_lever: f32,
     /// Gravity torque the sender is holding, N·m.
     pub holding_torque: f32,
+    /// Sum of `m·f` (mass times measured specific force) over the sender's link and
+    /// everything beyond it, N: the force the structure must transmit to move that mass.
+    pub dynamic_force: [f32; 3],
+    /// Moment of those `m·f` about the sender's joint, N·m.
+    pub dynamic_moment: [f32; 3],
 }
 
 impl Chain {
     /// Payload length in bytes.
-    pub const LEN: usize = 13 * 4;
+    pub const LEN: usize = 19 * 4;
 
     fn write(&self, w: &mut Writer) {
         w.vec3(self.up_link);
@@ -619,6 +624,8 @@ impl Chain {
         w.f32(self.payload_mass);
         w.f32(self.payload_lever);
         w.f32(self.holding_torque);
+        w.vec3(self.dynamic_force);
+        w.vec3(self.dynamic_moment);
     }
 
     fn read(r: &mut Reader) -> Result<Self, DecodeError> {
@@ -630,6 +637,8 @@ impl Chain {
             payload_mass: r.f32()?,
             payload_lever: r.f32()?,
             holding_torque: r.f32()?,
+            dynamic_force: r.vec3()?,
+            dynamic_moment: r.vec3()?,
         })
     }
 }

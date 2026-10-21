@@ -20,6 +20,8 @@ export interface JointElementNames {
   /** Link bending hinges, present only on flexible links. */
   readonly bendJoints: readonly [string, string];
   readonly linkBody: string;
+  /** Joint-lock equality that models the holding brake (joints with a brake only). */
+  readonly brakeEquality: string;
 }
 
 export function jointElementNames(joint: string): JointElementNames {
@@ -32,6 +34,7 @@ export function jointElementNames(joint: string): JointElementNames {
     accelSensor: `${joint}_accel`,
     bendJoints: [`${joint}_bend_a`, `${joint}_bend_b`],
     linkBody: `${joint}_link`,
+    brakeEquality: `${joint}_brake`,
   };
 }
 

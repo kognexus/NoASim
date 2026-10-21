@@ -26,11 +26,9 @@ import type { Mujoco } from "../plant/mujoco.ts";
 import { Plant } from "../plant/plant.ts";
 import { emptySensorFrame, JointSensors, type SensorFrame } from "../sensors/jointSensors.ts";
 import { type ControlGains, DEFAULT_GAINS, nodeConfigsFor } from "./gains.ts";
+import { impactThresholds } from "./impactThresholds.ts";
 import { NEXUS_SENSORS, type NexusSensorSpec } from "../sensors/spec.ts";
 import { Random } from "../util/random.ts";
-
-/** Holding torque of a brake, per rated N·m of its joint. */
-const BRAKE_TORQUE_PER_RATED_NM = 2;
 
 export interface ArmSystemOptions {
   readonly spec?: ArmSpec;
@@ -120,7 +118,13 @@ export class ArmSystem {
       ...(options.obstacle ? { obstacle: options.obstacle } : {}),
       ...(options.gravity === undefined ? {} : { gravity: options.gravity }),
     });
-    const generated = nodeConfigsFor(spec, BUS_CYCLE_HZ, options.gains ?? DEFAULT_GAINS);
+    const thresholds = impactThresholds(spec.name);
+    const generated = nodeConfigsFor(spec, BUS_CYCLE_HZ, options.gains ?? DEFAULT_GAINS).map(
+      (config, i) => ({
+        ...config,
+        impactThreshold: thresholds?.[i] ?? config.impactThreshold,
+      }),
+    );
     const configs = options.configure ? options.configure(generated) : generated;
     const joints = await Promise.all(
       spec.joints.map(async (joint, index): Promise<JointRuntime> => {
@@ -199,8 +203,7 @@ export class ArmSystem {
       j.current = out.current;
       plant.setMotorTorque(j.index, this.safeTorqueOff ? 0 : out.driveTorque);
       plant.setActuatorForces(j.index, out.frictionTorque, out.gearTorque);
-      if (actuator?.brake)
-        plant.setBrake(j.index, j.brake, BRAKE_TORQUE_PER_RATED_NM * actuator.ratedTorque);
+      if (actuator?.brake) plant.setBrake(j.index, j.brake);
     }
     for (let k = 0; k < this.#substeps; k++) plant.step();
     this.#cycle++;

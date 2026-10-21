@@ -42,6 +42,13 @@ export interface ControlGains {
   readonly imuLowpassHz: number;
 }
 
+/**
+ * Impact threshold before commissioning, as a share of rated torque. Commissioning
+ * (`experiments/src/calibrate-impact.ts`) replaces it with twice the external-torque
+ * envelope of normal motion (`impactThresholds.ts`).
+ */
+const DEFAULT_IMPACT_SHARE = 1.0;
+
 /** Defaults, tuned in NX-07 and NX-08 (see ADR-0003). */
 export const DEFAULT_GAINS: ControlGains = {
   naturalHz: 4,
@@ -99,6 +106,7 @@ export function nodeConfigFor(
     dampingHighpassHz: gains.dampingHighpassHz,
     dampingLowpassHz: gains.dampingLowpassHz,
     imuLowpassHz: gains.imuLowpassHz,
+    impactThreshold: DEFAULT_IMPACT_SHARE * a.ratedTorque,
     modelVersion: 1,
   };
 }

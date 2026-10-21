@@ -23,6 +23,8 @@ interface JointAddresses {
   readonly gyro: number;
   readonly accel: number;
   readonly linkBody: number;
+  /** Index of the brake equality, or -1 without a brake. */
+  readonly brakeEquality: number;
   /** The IMU's body has no degrees of freedom (the fixed base). */
   readonly imuOnStaticBody: boolean;
 }
@@ -44,7 +46,6 @@ export class Plant {
   readonly #tcpPos: number;
   readonly #tcpVel: number;
   readonly #toolBody: number;
-  readonly #nominalFriction = new Map<number, number>();
   readonly #obstacle: { qpos: number; stiffness: number } | undefined;
   #disposed = false;
 
@@ -221,15 +222,21 @@ export class Plant {
   }
 
   /**
-   * Engages or releases joint `i`'s holding brake: a friction lock of `torque` N·m on the
-   * motor hinge, on top of the joint's own friction.
+   * Engages or releases joint `i`'s holding brake: a lock of the motor hinge at the angle
+   * it has when the brake closes. Joints without a brake ignore this.
    */
-  setBrake(i: number, engaged: boolean, torque: number): void {
-    const dof = this.#joint(i).motorDof;
-    if (dof < 0) return;
-    const friction = this.#model.dof_frictionloss as Float64Array;
-    this.#nominalFriction.set(i, this.#nominalFriction.get(i) ?? friction[dof] ?? 0);
-    friction[dof] = (this.#nominalFriction.get(i) ?? 0) + (engaged ? torque : 0);
+  setBrake(i: number, engaged: boolean): void {
+    const adr = this.#joint(i);
+    if (adr.brakeEquality < 0) return;
+    const active = this.#data.eq_active as Uint8Array;
+    const wasEngaged = (active[adr.brakeEquality] ?? 0) !== 0;
+    if (engaged && !wasEngaged) {
+      // Joint equality q = c₀ + c₁·q₂ + …; with no second joint, q = c₀.
+      const data = this.#model.eq_data as Float64Array;
+      const stride = data.length / Math.max(1, this.#model.neq);
+      data.set([this.motorAngle(i), 0, 0, 0, 0], adr.brakeEquality * stride);
+    }
+    active[adr.brakeEquality] = engaged ? 1 : 0;
   }
 
   /** Applies an external force (world frame, N) at the tool body's centre of mass until changed. */
@@ -315,6 +322,11 @@ export class Plant {
       accel: this.#sensorAdr(names.accelSensor),
       linkBody: this.#id(mjOBJ_BODY.value, names.linkBody),
       imuOnStaticBody: this.#siteOnStaticBody(names.imuSite),
+      brakeEquality: this.#mujoco.mj_name2id(
+        this.#model,
+        this.#mujoco.mjtObj.mjOBJ_EQUALITY.value,
+        names.brakeEquality,
+      ),
     };
   }
 }

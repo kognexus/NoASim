@@ -64,6 +64,8 @@ pub struct NodeConfig {
     /// Low-pass corner of the IMU damping signals (local and network), Hz (second order):
     /// trades damping bandwidth against sensor noise at the tool.
     pub imu_lowpass_hz: f32,
+    /// External torque that counts as an impact, N·m (commissioned from normal motion).
+    pub impact_threshold: f32,
     /// Version of the node's dynamics model.
     pub model_version: f32,
 }
@@ -124,6 +126,7 @@ impl NodeConfig {
             damping_highpass_hz: 1.0,
             damping_lowpass_hz: 1000.0,
             imu_lowpass_hz: 40.0,
+            impact_threshold: 30.0,
             model_version: 1.0,
         }
     }

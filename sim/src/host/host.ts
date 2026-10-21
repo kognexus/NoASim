@@ -159,12 +159,36 @@ export class Host {
     return this.#motion;
   }
 
+  /** Acknowledges every fault: holding joints accept goals again. */
+  acknowledge(): void {
+    this.#queue.push({
+      header: { kind: FrameKind.Ack, source: Address.host, destination: Address.all, cycle: 0 },
+      ack: { code: 0 },
+    });
+  }
+
   /** One host cycle: reads delivered records, returns records to send. */
   tick(cycle: number, inbox: Uint8Array): Uint8Array {
     this.lastReceived = decodeRecords(inbox).map(decodeFrame);
-    for (const f of this.lastReceived)
+    for (const f of this.lastReceived) {
       if ("state" in f) this.jointAngles.set(f.header.source, f.state.outputAngle);
+      else if ("fault" in f)
+        this.faults.push({ cycle: f.header.cycle, node: f.header.source, ...f.fault });
+      else if ("impact" in f)
+        this.impacts.push({ cycle: f.header.cycle, node: f.header.source, ...f.impact });
+    }
     const out = this.discovery.handle(this.lastReceived, cycle);
+    if (this.heartbeat) {
+      out.push({
+        header: {
+          kind: FrameKind.Heartbeat,
+          source: Address.host,
+          destination: Address.all,
+          cycle,
+        },
+        heartbeat: true,
+      });
+    }
     // Settings are re-sent periodically, as a mailbox would retry, so a lost frame does not
     // leave a joint in the wrong mode.
     if (cycle > 0 && cycle % SETTINGS_REPEAT_CYCLES === 0 && this.discovery.phase === "ready") {

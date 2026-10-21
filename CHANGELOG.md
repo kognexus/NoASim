@@ -12,6 +12,12 @@ All notable changes, one entry per ticket. The format follows
 
 ### Added
 
+- **NX-16, NX-17** Impact detection from external torque (gear-twist torque minus the
+  IMU-measured dynamic chain) with commissioned thresholds, host heartbeat and comm-loss
+  hold, and the impact policies: retreat and hold, E-stop with brake and safe torque off,
+  float, plus a configuration check against brakes. All joints react within one cycle of
+  detection; retreat returns to the pre-impact pose within 0.1 mm and lets go of the
+  obstacle; no false alarms in normal tasks.
 - **NX-11** Network damping on IMU-measured link-tip rates with a relayed second hop,
   posture-aware gains, 15 Hz bandwidth limit, energy tank and stale-data fallback; the
   lightweight KX-6L arm; a fair per-mode tuner and an H6 robustness sweep; ADR-0004

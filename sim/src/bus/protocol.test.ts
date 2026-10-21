@@ -95,6 +95,8 @@ const SAMPLES: Record<string, Frame> = {
       payloadMass: 2.875,
       payloadLever: -4.5,
       holdingTorque: -31.25,
+      dynamicForce: [1.5, -2.25, 70.5],
+      dynamicMoment: [-0.5, 30.75, 0.125],
     },
   },
 };

@@ -268,6 +268,27 @@ export function buildMjcf(spec: ArmSpec, options: MjcfOptions = {}): string {
       ]),
     ]),
     el("actuator", {}, actuators),
+    // Holding brakes: a joint lock on the motor hinge, off until the brake engages.
+    el(
+      "equality",
+      {},
+      options.lockMotors
+        ? []
+        : spec.joints
+            .filter((joint) => joint.actuator.brake)
+            .map((joint) => {
+              const names = jointElementNames(joint.name);
+              // A stiff lock: 2 ms time constant and impedance near 1, so it neither sags under
+              // load nor creeps (MuJoCo's defaults let a held joint drift by tens of mrad).
+              return el("joint", {
+                name: names.brakeEquality,
+                joint1: names.motorJoint,
+                active: "false",
+                solref: "0.002 1",
+                solimp: "0.9999 0.99999 0.001",
+              });
+            }),
+    ),
     el("sensor", {}, sensors),
   ]);
   return `${serialize(model)}\n`;
