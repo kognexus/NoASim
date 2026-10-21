@@ -56,9 +56,7 @@ What this repository shows and what it does not. Numbers are in [RESULTS.md](RES
   ten commissioned postures; far outside them, or with another payload, they are wrong
   (with too few postures they made pick and place worse). The sag compensation assumes a
   link bends as if at mid-length, which the simulation's links do and a real tube need
-  not; its compliance is learned, its split is not. With coordinated damping (NX-30) as
-  well, classic pick and place tracks worse: that damper engages in the short pauses
-  between moves.
+  not; its compliance is learned, its split is not.
 - **Modes no joint reaches.** On the light arm, link bending at 55–69 Hz bends across
   every joint axis; no joint's torque or sensors reach it, so no damping in the joints,
   learned or not, can touch it. Only the structure's own damping does (NX-28).

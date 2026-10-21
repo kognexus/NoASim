@@ -7,6 +7,10 @@ All notable changes, one entry per ticket. The format follows
 
 ### Fixed
 
+- **NX-30** Coordinated damping engaged in any joint whose own reference stood still,
+  also while the rest of the arm moved (the base during a lift), and calibrated against
+  the moving arm: classic pick and place tracked 23–42 % worse with it. It now engages
+  only while every joint holds; found in NX-31.
 - Demo: while holding, the tool distance was measured from where the tool happened to be
   just after the arms were built, not from the commanded pose. An arm that sagged at once
   (budget actuators, datasheet model: 21 mm low) looked perfect, and one whose payload

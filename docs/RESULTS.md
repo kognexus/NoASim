@@ -471,12 +471,12 @@ Each joint learns, from neighbourhood commissioning (all joints excited at once 
 | KX-6L | own model only | 2.309 mm | 1.999 mm | 1.498 mm | 1.489 mm | 5.57 °/s |
 | KX-6L | coordinated model | 1.937 mm | 1.570 mm | 0.612 mm | 0.871 mm | 5.15 °/s |
 | KX-6L | coordinated model, no sag compensation | 2.239 mm | 2.000 mm | 1.413 mm | 1.483 mm | 5.15 °/s |
-| KX-6L | coordinated model and coordinated damping | 1.938 mm | 1.566 mm | 0.612 mm | 1.073 mm | 5.39 °/s |
+| KX-6L | coordinated model and coordinated damping | 1.938 mm | 1.566 mm | 0.611 mm | 0.870 mm | 5.16 °/s |
 | KX-6 | today's joints | 2.232 mm | 1.858 mm | 0.977 mm | 0.992 mm | 4.91 °/s |
 | KX-6 | own model only | 1.923 mm | 1.510 mm | 0.579 mm | 0.705 mm | 5.42 °/s |
 | KX-6 | coordinated model | 1.885 mm | 1.506 mm | 0.489 mm | 0.711 mm | 4.96 °/s |
 | KX-6 | coordinated model, no sag compensation | 1.885 mm | 1.506 mm | 0.489 mm | 0.711 mm | 4.96 °/s |
-| KX-6 | coordinated model and coordinated damping | 1.885 mm | 1.505 mm | 0.489 mm | 1.012 mm | 5.06 °/s |
+| KX-6 | coordinated model and coordinated damping | 1.885 mm | 1.505 mm | 0.489 mm | 0.711 mm | 4.96 °/s |
 
 **Holding and disturbances** (hold: tool offset from the commanded pose at home, reach and between; tap: mean distance over the first second, time to stay within 0.5 mm; shake: 15 N sideways near the first mode for 3 s, mean distance over 4 s and joint vibration; push: 150 N sideways for 0.4 s, peak and mean distance over 2 s):
 

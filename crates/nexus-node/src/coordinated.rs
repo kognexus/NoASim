@@ -23,9 +23,12 @@
 //! The command is limited to the host's share of the torque limit and published; it then
 //! goes through the same low-pass as in the model and the energy tank.
 //!
-//! The model holds for the arm at rest, so the damper acts only while the joint holds
-//! still: after `SETTLE_CYCLES` of holding it averages the rest values of its
-//! measurements for the model's calibration time, then acts until the joint moves again.
+//! The model holds for the arm at rest, so the damper acts only while the whole arm holds
+//! still (every joint's published reference velocity, NX-31): after `SETTLE_CYCLES` of
+//! holding it averages the rest values of its measurements for the model's calibration
+//! time, then acts until any joint moves again. (Judged by its own reference alone, a
+//! joint that stands still during a move, the base while the arm lifts say, engaged and
+//! calibrated against a moving arm: pick and place tracked 35–40 % worse.)
 //! Without a model, while moving or calibrating, or when a near joint's data is late, the
 //! joint uses network damping.
 
@@ -57,7 +60,7 @@ const SETTLE_CYCLES: u32 = 1000;
 /// filter fed late data (up to 16 cycles) helped at two postures and oscillated at a
 /// third, because its commands and measurements no longer belong to the same cycles.
 const MAX_AGE: u32 = 4;
-/// Below this reference speed the joint counts as holding, rad/s.
+/// Below this reference speed a joint counts as holding, rad/s.
 const HOLDING_SPEED: f32 = 1e-6;
 /// Energy the damper's tank may hold, J (as the network term's).
 const TANK_CAPACITY: f32 = 0.05;
@@ -309,7 +312,11 @@ impl Coordinated {
         cap: f32,
     ) -> Option<f32> {
         let model = Model { words: &self.words, dims: self.dims? };
-        if libm::fabsf(reference_velocity) > HOLDING_SPEED {
+        let moving = |position: usize| {
+            near.fresh(position, now, MAX_AGE)
+                .is_some_and(|(s, _)| libm::fabsf(s.reference[1]) > HOLDING_SPEED)
+        };
+        if libm::fabsf(reference_velocity) > HOLDING_SPEED || (1..=model.dims.joints).any(moving) {
             self.reset();
             return None;
         }
@@ -455,6 +462,17 @@ mod tests {
             acted = d.torque(&near, cycle, 0.0, -1.0, 10.0);
         }
         assert!(acted.is_some(), "acts after settling and calibration");
+        // Another joint's reference moving (here the frame's): back to network damping.
+        cycle += 1;
+        let moving = NodeState { motor_angle: 0.5, reference: [0.0, 0.2, 0.0], ..NodeState::default() };
+        near.on_state(NodeId(1), &moving, cycle);
+        assert_eq!(d.torque(&near, cycle, 0.0, -1.0, 10.0), None);
+        for _ in 0..1100 {
+            cycle += 1;
+            send(&mut near, 0.5, cycle);
+            acted = d.torque(&near, cycle, 0.0, -1.0, 10.0);
+        }
+        assert!(acted.is_some(), "acts again once everything has held long enough");
         // A step of the angle from its rest: the command opposes it (u = −K·ẑ, K = 2).
         for _ in 0..50 {
             cycle += 1;
