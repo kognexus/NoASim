@@ -3,7 +3,7 @@
  *
  * Do not use this family for training, tuning, choosing model sizes or debugging any
  * learned or fitted model. It is opened only by the final H10 run (NX-19). Its SHA-256
- * is pinned in `sealed.test.ts` and recorded in issue NX-04, so any later change
+ * is pinned in `sealed.test.ts` and recorded in docs/tickets/NX-04.md, so any later change
  * to this file is visible.
  *
  * Structurally different from every open family:
