@@ -29,3 +29,12 @@ ignore = ["D203", "D213", "D105", "D107", "D401"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# Linux (CI) takes PyTorch's CPU-only build; the default one pulls in ~3 GB of CUDA.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true

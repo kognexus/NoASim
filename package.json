@@ -10,11 +10,9 @@
   ],
   "scripts": {
     "build:wasm": "cargo build -q -p nexus-wasm --target wasm32-unknown-unknown --release",
-    "check": "npm run check:rust && npm run build:wasm && npm run check:ts && npm run check:py && npm run check:board",
+    "check": "npm run check:rust && npm run build:wasm && npm run check:ts && npm run check:py",
     "check:rust": "cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace --quiet",
     "check:ts": "prettier --check . && eslint . && tsc -b && vitest run",
-    "check:board": "node tools/board.mjs --check",
-    "board": "node tools/board.mjs",
     "format": "cargo fmt --all && prettier --write .",
     "bench:step": "npm run build:wasm && node sim/bench/stepCost.ts",
     "check:py": "cd learning && uv run ruff format --check . && uv run ruff check . && uv run pytest -q",

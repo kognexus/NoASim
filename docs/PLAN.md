@@ -1,7 +1,8 @@
 # KognexusNexus: networked-actuator arm simulation
 
-*Approved 21 Oct 2026. Each ticket below has its own file in `docs/tickets/`, and progress is
-tracked in `docs/tickets/BOARD.md` and `CHANGELOG.md`.*
+*Approved 21 Oct 2026. Each ticket below is a GitHub issue of
+[kognexus/NoASim](https://github.com/kognexus/NoASim/issues) (NX-n is issue n + 1), with its
+acceptance criteria and progress; `CHANGELOG.md` records what each one changed.*
 
 ## 1. Goal
 

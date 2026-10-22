@@ -17,7 +17,7 @@
  *                            plant's gear damping
  *
  * `--sealed` draws only the sealed out-of-family actuator. It is for the final H10 run and
- * nothing else (see docs/tickets/NX-04.md). `--grade` draws every joint from one actuator
+ * nothing else (see issue NX-04). `--grade` draws every joint from one actuator
  * grade (NX-26): units `kx6-budget-s500…` and `kx6-premium-s600…`.
  */
 import { mkdir, writeFile } from "node:fs/promises";

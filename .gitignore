@@ -23,3 +23,6 @@ __pycache__/
 
 # Experiment output (regenerated)
 /experiments/results/
+
+# Local working notes (tickets live as GitHub issues)
+/.local/

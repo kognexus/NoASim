@@ -3,7 +3,7 @@
  * fastest tap settling with rest jitter ≤ 0.1 mm at the tool and quiet housings, over
  * two seeds and two tap directions. The joint controller itself is the same in every
  * mode; only the damping terms differ. Re-run the tuner and update these values together
- * with docs/tickets/NX-11.md.
+ * with issue NX-11.
  */
 import { type ControlGains, DEFAULT_GAINS } from "./gains.ts";
 

@@ -1,0 +1,66 @@
+name: CI
+
+# Every push to any branch, and every pull request, runs the same checks as
+# `npm run check` locally: Rust, the joint firmware built for WebAssembly, TypeScript
+# (including the simulation tests, which run that firmware) and Python.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust:
+    name: Rust (format, lint, test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - name: Check
+        run: |
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test --workspace --quiet
+
+  typescript:
+    name: TypeScript (format, lint, types, simulation tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the toolchain from rust-toolchain.toml
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Build the joint firmware for WebAssembly
+        run: npm run build:wasm
+      - name: Check
+        run: npm run check:ts
+
+  python:
+    name: Python (format, lint, test the learned models)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: learning/uv.lock
+      - name: Check
+        working-directory: learning
+        run: |
+          uv run ruff format --check .
+          uv run ruff check .
+          uv run pytest -q
